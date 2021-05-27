@@ -1,0 +1,11 @@
+em++ test.cpp ../../build/libbitcoin_common.a \
+    -I ./../../src/ \
+    --bind \
+    -s ALLOW_MEMORY_GROWTH=1 \
+    -s MEMORY_GROWTH_GEOMETRIC_STEP=1 \
+    -s WASM=1 -s EXIT_RUNTIME=0 -s INVOKE_RUN=0 \
+    -s MODULARIZE=1 \
+    -s FETCH=1 \
+    -s EXPORT_NAME=Common \
+    -flto -O3 \
+    -o common.js
