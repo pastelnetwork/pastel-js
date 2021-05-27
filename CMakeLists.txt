@@ -7,9 +7,8 @@ set(CMAKE_CXX_COMPILER "em++")
 
 set(CMAKE_CXX_STANDARD 17)
 
-#add_definitions(-DHAVE_CXX_STDHEADERS -DLEVELDB_PLATFORM_POSIX -DLEVELDB_ATOMIC_PRESENT)
-
-include_directories(src
+include_directories(
+    src
     libs/include
 )
 
