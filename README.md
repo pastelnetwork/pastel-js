@@ -2,7 +2,7 @@
 
 Pastel version compiled with Emscripten.
 
-Repository containt third party libraries for pastel compiled with Emscripten.
+Repository contains third party libraries for pastel compiled with Emscripten.
 
 Requirements:
 ```
