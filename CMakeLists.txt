@@ -121,3 +121,43 @@ add_library(bitcoin_wallet
 )
 target_include_directories(bitcoin_wallet PRIVATE src/univalue/include src/leveldb/include)
 target_compile_definitions(bitcoin_wallet PUBLIC HAVE_CXX_STDHEADERS)
+
+# Pastel util
+add_library(bitcoin_util
+    src/chainparamsbase.cpp
+    src/clientversion.cpp
+    src/compat/glibcxx_sanity.cpp
+    src/compat/glibc_compat.cpp
+    src/compat/glibc_sanity.cpp
+    src/random.cpp
+    src/rpc/client.cpp
+    src/rpc/protocol.cpp
+    src/support/cleanse.cpp
+    src/support/pagelocker.cpp
+    src/sync.cpp
+    src/util.cpp
+    src/utilmoneystr.cpp
+    src/utilstrencodings.cpp
+    src/utiltime.cpp
+)
+target_include_directories(bitcoin_util PRIVATE src/univalue/include)
+target_compile_definitions(bitcoin_util PUBLIC SODIUM_STATIC)
+
+# Pastel crypto
+add_library(bitcoin_crypto
+    src/crypto/equihash.cpp
+    src/crypto/hmac_sha256.cpp
+    src/crypto/hmac_sha512.cpp
+    src/crypto/ripemd160.cpp
+    src/crypto/sha1.cpp
+    src/crypto/sha256.cpp
+    src/crypto/sha512.cpp
+)
+
+# Pastel zmq
+add_library(bitcoin_zmq
+    src/zmq/zmqabstractnotifier.cpp
+    src/zmq/zmqnotificationinterface.cpp
+    src/zmq/zmqpublishnotifier.cpp
+)
+target_compile_definitions(bitcoin_zmq PUBLIC ENABLE_ZMQ ZMQ_STATIC)
