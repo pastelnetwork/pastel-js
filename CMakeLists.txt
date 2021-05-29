@@ -181,5 +181,5 @@ add_library(snark
     src/snark/libsnark/gadgetlib1/constraint_profiling.cpp
 )
 target_include_directories(snark PRIVATE src/snark/libsnark src/snark)
-target_compile_definitions(snark PUBLIC CURVE=ALT_BN128 NO_PROCPS=1 NO_DOCS=1 STATIC=1 NO_SUPERCOP=1 FEATUREFLAGS=-DMONTGOMERY_OUTPUT NO_COPY_DEPINST=1 NO_COMPILE_LIBGTEST=1 PLATFORM=darwin)
+target_compile_definitions(snark PUBLIC CURVE=ALT_BN128 NO_PROCPS NO_SUPERCOP MONTGOMERY_OUTPUT NO_COPY_DEPINST NO_GTEST)
 #target_link_libraries(snark libs/libgmp.a libs/libgmpxx.a)
