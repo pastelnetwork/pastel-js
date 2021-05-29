@@ -161,3 +161,25 @@ add_library(bitcoin_zmq
     src/zmq/zmqpublishnotifier.cpp
 )
 target_compile_definitions(bitcoin_zmq PUBLIC ENABLE_ZMQ ZMQ_STATIC)
+
+# Secp256k1
+add_library(secp256k1
+    src/secp256k1/src/secp256k1.c
+)
+target_include_directories(secp256k1 PRIVATE src/secp256k1 src/secp256k1/src)
+target_compile_definitions(secp256k1 PUBLIC ENABLE_MODULE_ECDH ENABLE_MODULE_RECOVERY USE_NUM_GMP USE_FIELD_10X26 USE_FIELD_INV_BUILTIN USE_SCALAR_INV_BUILTIN USE_SCALAR_8X32)
+
+# Snark 
+add_library(snark
+    src/snark/libsnark/algebra/curves/alt_bn128/alt_bn128_g1.cpp
+    src/snark/libsnark/algebra/curves/alt_bn128/alt_bn128_g2.cpp
+    src/snark/libsnark/algebra/curves/alt_bn128/alt_bn128_init.cpp
+    src/snark/libsnark/algebra/curves/alt_bn128/alt_bn128_pairing.cpp
+    src/snark/libsnark/algebra/curves/alt_bn128/alt_bn128_pp.cpp
+    src/snark/libsnark/common/profiling.cpp
+    src/snark/libsnark/common/utils.cpp
+    src/snark/libsnark/gadgetlib1/constraint_profiling.cpp
+)
+target_include_directories(snark PRIVATE src/snark/libsnark src/snark)
+target_compile_definitions(snark PUBLIC CURVE=ALT_BN128 NO_PROCPS=1 NO_DOCS=1 STATIC=1 NO_SUPERCOP=1 FEATUREFLAGS=-DMONTGOMERY_OUTPUT NO_COPY_DEPINST=1 NO_COMPILE_LIBGTEST=1 PLATFORM=darwin)
+#target_link_libraries(snark libs/libgmp.a libs/libgmpxx.a)
