@@ -21,6 +21,8 @@ add_library(univalue
 target_include_directories(univalue PRIVATE src/univalue/include)
 
 # Leveldb
+set(LEVEL_DB_FLAGS "LEVELDB_PLATFORM_POSIX" "LEVELDB_ATOMIC_PRESENT" "HAVE_CXX_STDHEADERS")
+set(LEVEL_DB_INCLUDE "src/leveldb/include")
 add_library(leveldb 
     src/leveldb/db/builder.cc
     src/leveldb/db/c.cc
@@ -66,7 +68,7 @@ add_library(leveldb
     src/leveldb/util/testutil.cc
 )
 target_include_directories(leveldb PRIVATE src/leveldb src/leveldb/include)
-target_compile_definitions(leveldb PUBLIC LEVELDB_PLATFORM_POSIX LEVELDB_ATOMIC_PRESENT)
+target_compile_definitions(leveldb PUBLIC ${LEVEL_DB_FLAGS})
 
 # Pastel common
 add_library(bitcoin_common
@@ -100,8 +102,8 @@ add_library(bitcoin_common
     src/uint256.cpp
     src/utiltest.cpp
 )
-target_include_directories(bitcoin_common PRIVATE src/univalue/include src/secp256k1/include)
-target_compile_definitions(bitcoin_common PUBLIC HAVE_CXX_STDHEADERS)
+target_include_directories(bitcoin_common PRIVATE src/univalue/include src/secp256k1/include ${LEVEL_DB_INCLUDE})
+target_compile_definitions(bitcoin_common PUBLIC ${LEVEL_DB_FLAGS})
 
 # Pastel wallet
 add_library(bitcoin_wallet
@@ -119,8 +121,8 @@ add_library(bitcoin_wallet
     src/wallet/wallet_ismine.cpp
     src/zcbenchmarks.cpp
 )
-target_include_directories(bitcoin_wallet PRIVATE src/univalue/include src/leveldb/include)
-target_compile_definitions(bitcoin_wallet PUBLIC HAVE_CXX_STDHEADERS)
+target_include_directories(bitcoin_wallet PRIVATE src/univalue/include ${LEVEL_DB_INCLUDE})
+target_compile_definitions(bitcoin_wallet PUBLIC ${LEVEL_DB_FLAGS})
 
 # Pastel util
 add_library(bitcoin_util
@@ -154,6 +156,47 @@ add_library(bitcoin_crypto
     src/crypto/sha512.cpp
 )
 
+# Pastel server
+add_library(bitcoin_server
+    src/addrman.cpp
+    src/alert.cpp
+    src/asyncrpcoperation.cpp
+    src/asyncrpcqueue.cpp
+    src/bloom.cpp
+    src/chain.cpp
+    src/checkpoints.cpp
+    src/dbwrapper.cpp
+    src/deprecation.cpp
+    src/httprpc.cpp
+    src/httpserver.cpp
+    src/init.cpp
+    src/main.cpp
+    src/merkleblock.cpp
+    src/metrics.cpp
+    src/miner.cpp
+    src/net.cpp
+    src/noui.cpp
+    src/paymentdisclosure.cpp
+    src/paymentdisclosuredb.cpp
+    src/policy/fees.cpp
+    src/pow.cpp
+    src/rest.cpp
+    src/rpc/blockchain.cpp
+    src/rpc/mining.cpp
+    src/rpc/misc.cpp
+    src/rpc/net.cpp
+    src/rpc/rawtransaction.cpp
+    src/rpc/server.cpp
+    src/sendalert.cpp
+    src/timedata.cpp
+    src/torcontrol.cpp
+    src/txdb.cpp
+    src/txmempool.cpp
+    src/validationinterface.cpp
+)
+target_include_directories(bitcoin_server PRIVATE src/univalue/include ${LEVEL_DB_INCLUDE} src/leveldb/helpers/memenv src/secp256k1/include src/snark)
+target_compile_definitions(bitcoin_server PUBLIC ${LEVEL_DB_FLAGS})
+
 # Pastel zmq
 add_library(bitcoin_zmq
     src/zmq/zmqabstractnotifier.cpp
@@ -170,6 +213,8 @@ target_include_directories(secp256k1 PRIVATE src/secp256k1 src/secp256k1/src)
 target_compile_definitions(secp256k1 PUBLIC ENABLE_MODULE_ECDH ENABLE_MODULE_RECOVERY USE_NUM_GMP USE_FIELD_10X26 USE_FIELD_INV_BUILTIN USE_SCALAR_INV_BUILTIN USE_SCALAR_8X32)
 
 # Snark 
+set(SNARK_INCLUDE "src/snark/libsnark" "src/snark")
+set(SNARK_FLAGS "CURVE_ALT_BN128" "NO_PROCPS" "NO_SUPERCOP" "MONTGOMERY_OUTPUT" "NO_COPY_DEPINST" "NO_GTEST")
 add_library(snark
     src/snark/libsnark/algebra/curves/alt_bn128/alt_bn128_g1.cpp
     src/snark/libsnark/algebra/curves/alt_bn128/alt_bn128_g2.cpp
@@ -180,6 +225,20 @@ add_library(snark
     src/snark/libsnark/common/utils.cpp
     src/snark/libsnark/gadgetlib1/constraint_profiling.cpp
 )
-target_include_directories(snark PRIVATE src/snark/libsnark src/snark)
-target_compile_definitions(snark PUBLIC CURVE=ALT_BN128 NO_PROCPS NO_SUPERCOP MONTGOMERY_OUTPUT NO_COPY_DEPINST NO_GTEST)
-#target_link_libraries(snark libs/libgmp.a libs/libgmpxx.a)
+target_include_directories(snark PRIVATE ${SNARK_INCLUDE} src/snark)
+target_compile_definitions(snark PUBLIC ${SNARK_FLAGS})
+
+set(ZCASH_FLAGS "BOOST_SPIRIT_THREADSAFE" "STATIC")
+add_library(zcash
+    src/zcash/Address.cpp
+    src/zcash/IncrementalMerkleTree.cpp
+    src/zcash/JoinSplit.cpp
+    src/zcash/Note.cpp
+    src/zcash/NoteEncryption.cpp
+    src/zcash/prf.cpp
+    src/zcash/Proof.cpp
+    src/zcash/util.cpp
+    src/zcash/zip32.cpp
+)
+target_include_directories(zcash PRIVATE ${SNARK_INCLUDE})
+target_compile_definitions(zcash PUBLIC SODIUM_STATIC ${ZCASH_FLAGS} ${SNARK_FLAGS})
