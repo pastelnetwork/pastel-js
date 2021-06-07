@@ -13,12 +13,13 @@ include_directories(
 )
 
 # Univalue
+set(UNIVALUE_INCLUDE "src/univalue/include")
 add_library(univalue 
     src/univalue/lib/univalue.cpp
     src/univalue/lib/univalue_read.cpp
     src/univalue/lib/univalue_write.cpp
 )
-target_include_directories(univalue PRIVATE src/univalue/include)
+target_include_directories(univalue PRIVATE ${UNIVALUE_INCLUDE})
 
 # Leveldb
 set(LEVEL_DB_FLAGS "LEVELDB_PLATFORM_POSIX" "LEVELDB_ATOMIC_PRESENT" "HAVE_CXX_STDHEADERS")
@@ -66,6 +67,7 @@ add_library(leveldb
     src/leveldb/util/status.cc
     src/leveldb/util/testharness.cc
     src/leveldb/util/testutil.cc
+    src/leveldb/util/env_posix.cc
 )
 target_include_directories(leveldb PRIVATE src/leveldb src/leveldb/include)
 target_compile_definitions(leveldb PUBLIC ${LEVEL_DB_FLAGS})
@@ -156,6 +158,7 @@ add_library(bitcoin_crypto
     src/crypto/sha512.cpp
 )
 
+set(BITCOIN_SERVER_FLAGS "ENABLE_WALLET")
 # Pastel server
 add_library(bitcoin_server
     src/addrman.cpp
@@ -195,15 +198,16 @@ add_library(bitcoin_server
     src/validationinterface.cpp
 )
 target_include_directories(bitcoin_server PRIVATE src/univalue/include ${LEVEL_DB_INCLUDE} src/leveldb/helpers/memenv src/secp256k1/include src/snark)
-target_compile_definitions(bitcoin_server PUBLIC ${LEVEL_DB_FLAGS})
+target_compile_definitions(bitcoin_server PUBLIC ${LEVEL_DB_FLAGS} ${BITCOIN_SERVER_FLAGS})
 
+set(BITCOIN_ZMQ_FLAGS "ENABLE_ZMQ" "ZMQ_STATIC")
 # Pastel zmq
 add_library(bitcoin_zmq
     src/zmq/zmqabstractnotifier.cpp
     src/zmq/zmqnotificationinterface.cpp
     src/zmq/zmqpublishnotifier.cpp
 )
-target_compile_definitions(bitcoin_zmq PUBLIC ENABLE_ZMQ ZMQ_STATIC)
+target_compile_definitions(bitcoin_zmq PUBLIC ${BITCOIN_ZMQ_FLAGS})
 
 # Secp256k1
 add_library(secp256k1
@@ -242,3 +246,30 @@ add_library(zcash
 )
 target_include_directories(zcash PRIVATE ${SNARK_INCLUDE})
 target_compile_definitions(zcash PUBLIC SODIUM_STATIC ${ZCASH_FLAGS} ${SNARK_FLAGS})
+
+set(PASTELD_FLAGS "ENABLE_WALLET")
+add_executable(pasteld
+    src/bitcoind.cpp
+    src/mnode-active.cpp
+    src/mnode-config.cpp
+    src/mnode-controller.cpp
+    src/mnode-db.cpp
+    src/mnode-dbcreate.cpp
+    src/mnode-governance.cpp
+    src/mnode-manager.cpp
+    src/mnode-masternode.cpp
+    src/mnode-messageproc.cpp
+    src/mnode-msgsigner.cpp
+    src/mnode-notificationinterface.cpp
+    src/mnode-pastel.cpp
+    src/mnode-payments.cpp
+    src/mnode-requesttracker.cpp
+    src/mnode-rpc.cpp
+    src/mnode-sync.cpp
+    src/mnode-validation.cpp
+)
+target_include_directories(pasteld PRIVATE ${UNIVALUE_INCLUDE} ${LEVEL_DB_INCLUDE})
+target_compile_definitions(pasteld PUBLIC ${BITCOIN_ZMQ_FLAGS} ${PASTELD_FLAGS})
+target_link_directories(pasteld PRIVATE libs/)
+target_link_libraries(pasteld bitcoin_server bitcoin_wallet bitcoin_common bitcoin_util bitcoin_zmq bitcoin_crypto zcash snark secp256k1 leveldb univalue)
+target_link_libraries(pasteld sodium rustzcash event event_core event_pthreads gmp gmpxx boost_thread boost_chrono boost_program_options boost_system boost_filesystem db_cxx db zmq ssl crypto)
