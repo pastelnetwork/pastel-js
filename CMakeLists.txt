@@ -248,6 +248,7 @@ target_include_directories(zcash PRIVATE ${SNARK_INCLUDE})
 target_compile_definitions(zcash PUBLIC SODIUM_STATIC ${ZCASH_FLAGS} ${SNARK_FLAGS})
 
 set(PASTELD_FLAGS "ENABLE_WALLET")
+set(PASTELD_EMCC_FLAGS "--bind -s ALLOW_MEMORY_GROWTH=1 -s WASM=1 -s EXIT_RUNTIME=0 -s INVOKE_RUN=0 -s MODULARIZE=1 -s FETCH=1 -s EXPORT_NAME=Pastel -flto -O3")
 add_executable(pasteld
     src/bitcoind.cpp
     src/mnode-active.cpp
@@ -267,9 +268,11 @@ add_executable(pasteld
     src/mnode-rpc.cpp
     src/mnode-sync.cpp
     src/mnode-validation.cpp
+    port/port.cpp
 )
 target_include_directories(pasteld PRIVATE ${UNIVALUE_INCLUDE} ${LEVEL_DB_INCLUDE})
 target_compile_definitions(pasteld PUBLIC ${BITCOIN_ZMQ_FLAGS} ${PASTELD_FLAGS})
 target_link_directories(pasteld PRIVATE libs/)
 target_link_libraries(pasteld bitcoin_server bitcoin_wallet bitcoin_common bitcoin_util bitcoin_zmq bitcoin_crypto zcash snark secp256k1 leveldb univalue)
 target_link_libraries(pasteld sodium rustzcash event event_core event_pthreads gmp gmpxx boost_thread boost_chrono boost_program_options boost_system boost_filesystem db_cxx db zmq ssl crypto)
+set_target_properties(pasteld PROPERTIES LINK_FLAGS ${PASTELD_EMCC_FLAGS})
