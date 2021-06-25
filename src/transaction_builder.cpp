@@ -1,6 +1,6 @@
 // Copyright (c) 2018 The Zcash developers
 // Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #include "transaction_builder.h"
 
@@ -8,9 +8,8 @@
 #include "pubkey.h"
 #include "rpc/protocol.h"
 #include "script/sign.h"
-#include <key_io.h>
+#include "key_io.h"
 
-#include <boost/variant.hpp>
 #include <librustzcash.h>
 
 SpendDescriptionInfo::SpendDescriptionInfo(
@@ -26,25 +25,21 @@ TransactionBuilderResult::TransactionBuilderResult(const CTransaction& tx) : may
 
 TransactionBuilderResult::TransactionBuilderResult(const std::string& error) : maybeError(error) {}
 
-bool TransactionBuilderResult::IsTx() { return maybeTx != boost::none; }
+bool TransactionBuilderResult::IsTx() { return maybeTx != std::nullopt; }
 
-bool TransactionBuilderResult::IsError() { return maybeError != boost::none; }
+bool TransactionBuilderResult::IsError() { return maybeError != std::nullopt; }
 
 CTransaction TransactionBuilderResult::GetTxOrThrow() {
-    if (maybeTx) {
-        return maybeTx.get();
-    } else {
-        throw JSONRPCError(RPC_WALLET_ERROR, "Failed to build transaction: " + GetError());
-    }
+    if (maybeTx.has_value())
+        return maybeTx.value();
+    throw JSONRPCError(RPC_WALLET_ERROR, "Failed to build transaction: " + GetError());
 }
 
 std::string TransactionBuilderResult::GetError() {
-    if (maybeError) {
-        return maybeError.get();
-    } else {
-        // This can only happen if isTx() is true in which case we should not call getError()
-        throw std::runtime_error("getError() was called in TransactionBuilderResult, but the result was not initialized as an error.");
-    }
+    if (maybeError.has_value())
+        return maybeError.value();
+    // This can only happen if isTx() is true in which case we should not call getError()
+    throw std::runtime_error("getError() was called in TransactionBuilderResult, but the result was not initialized as an error.");
 }
 
 TransactionBuilder::TransactionBuilder(
@@ -101,7 +96,7 @@ void TransactionBuilder::AddTransparentInput(COutPoint utxo, CScript scriptPubKe
     tIns.emplace_back(scriptPubKey, value);
 }
 
-void TransactionBuilder::AddTransparentOutput(CTxDestination& to, CAmount value)
+void TransactionBuilder::AddTransparentOutput(const CTxDestination& to, CAmount value)
 {
     if (!IsValidDestination(to)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid output address, not a valid taddr.");
@@ -120,7 +115,7 @@ void TransactionBuilder::SetFee(CAmount fee)
 void TransactionBuilder::SendChangeTo(libzcash::SaplingPaymentAddress changeAddr, uint256 ovk)
 {
     zChangeAddr = std::make_pair(ovk, changeAddr);
-    tChangeAddr = boost::none;
+    tChangeAddr = std::nullopt;
 }
 
 void TransactionBuilder::SendChangeTo(CTxDestination& changeAddr)
@@ -130,7 +125,7 @@ void TransactionBuilder::SendChangeTo(CTxDestination& changeAddr)
     }
 
     tChangeAddr = changeAddr;
-    zChangeAddr = boost::none;
+    zChangeAddr = std::nullopt;
 }
 
 TransactionBuilderResult TransactionBuilder::Build()
@@ -231,7 +226,7 @@ TransactionBuilderResult TransactionBuilder::Build()
             librustzcash_sapling_proving_ctx_free(ctx);
             return TransactionBuilderResult("Failed to encrypt note");
         }
-        auto enc = res.get();
+        auto enc = res.value();
         auto encryptor = enc.second;
 
         OutputDescription odesc;

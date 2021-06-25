@@ -3,8 +3,7 @@
 
 #include <array>
 #include <deque>
-#include <boost/optional.hpp>
-#include <boost/static_assert.hpp>
+#include <optional>
 
 #include "uint256.h"
 #include "serialize.h"
@@ -21,11 +20,13 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         std::vector<std::vector<unsigned char>> pathBytes;
         uint64_t indexInt;
-        if (ser_action.ForRead()) {
+        if (ser_action == SERIALIZE_ACTION::Read)
+        {
             READWRITE(pathBytes);
             READWRITE(indexInt);
             MerklePath &us = *(const_cast<MerklePath*>(this));
@@ -88,7 +89,7 @@ class IncrementalMerkleTree {
 friend class IncrementalWitness<Depth, Hash>;
 
 public:
-    BOOST_STATIC_ASSERT(Depth >= 1);
+    static_assert(Depth >= 1);
 
     IncrementalMerkleTree() { }
 
@@ -112,8 +113,9 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         READWRITE(left);
         READWRITE(right);
         READWRITE(parents);
@@ -131,11 +133,11 @@ public:
 
 private:
     static EmptyMerkleRoots<Depth, Hash> emptyroots;
-    boost::optional<Hash> left;
-    boost::optional<Hash> right;
+    std::optional<Hash> left;
+    std::optional<Hash> right;
 
     // Collapsed "left" subtrees ordered toward the root of the tree.
-    std::vector<boost::optional<Hash>> parents;
+    std::vector<std::optional<Hash>> parents;
     MerklePath path(std::deque<Hash> filler_hashes = std::deque<Hash>()) const;
     Hash root(size_t depth, std::deque<Hash> filler_hashes = std::deque<Hash>()) const;
     bool is_complete(size_t depth = Depth) const;
@@ -182,8 +184,9 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         READWRITE(tree);
         READWRITE(filled);
         READWRITE(cursor);
@@ -198,7 +201,7 @@ public:
 private:
     IncrementalMerkleTree<Depth, Hash> tree;
     std::vector<Hash> filled;
-    boost::optional<IncrementalMerkleTree<Depth, Hash>> cursor;
+    std::optional<IncrementalMerkleTree<Depth, Hash>> cursor;
     size_t cursor_depth = 0;
     std::deque<Hash> partial_path() const;
     IncrementalWitness(IncrementalMerkleTree<Depth, Hash> tree) : tree(tree) {}

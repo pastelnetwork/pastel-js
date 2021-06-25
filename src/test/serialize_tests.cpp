@@ -12,7 +12,6 @@
 #include <stdint.h>
 
 #include <boost/test/unit_test.hpp>
-#include <boost/optional.hpp>
 
 using namespace std;
 
@@ -50,8 +49,9 @@ public:
     CSerializeMethodsTestSingle(int intvalin, bool boolvalin, std::string stringvalin, const char* charstrvalin, CTransaction txvalin) : intval(intvalin), boolval(boolvalin), stringval(std::move(stringvalin)), charstrval(charstrvalin), txval(txvalin){}
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         READWRITE(intval);
         READWRITE(boolval);
         READWRITE(stringval);
@@ -75,23 +75,24 @@ public:
     using CSerializeMethodsTestSingle::CSerializeMethodsTestSingle;
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         READWRITEMANY(intval, boolval, stringval, FLATDATA(charstrval), txval);
     }
 };
 
 BOOST_AUTO_TEST_CASE(boost_optional)
 {
-    check_ser_rep<boost::optional<unsigned char>>(0xff, {0x01, 0xff});
-    check_ser_rep<boost::optional<unsigned char>>(boost::none, {0x00});
-    check_ser_rep<boost::optional<std::string>>(std::string("Test"), {0x01, 0x04, 'T', 'e', 's', 't'});
+    check_ser_rep<std::optional<unsigned char>>(0xff, {0x01, 0xff});
+    check_ser_rep<std::optional<unsigned char>>(std::nullopt, {0x00});
+    check_ser_rep<std::optional<std::string>>(std::string("Test"), {0x01, 0x04, 'T', 'e', 's', 't'});
 
     {
         // Ensure that canonical optional discriminant is used
         CDataStream ss(SER_DISK, 0);
         ss.write("\x02\x04Test", 6);
-        boost::optional<std::string> into;
+        std::optional<std::string> into;
 
         BOOST_CHECK_THROW(ss >> into, std::ios_base::failure);
     }
@@ -280,12 +281,12 @@ BOOST_AUTO_TEST_CASE(compactsize)
     CDataStream ss(SER_DISK, 0);
     vector<char>::size_type i, j;
 
-    for (i = 1; i <= MAX_SIZE; i *= 2)
+    for (i = 1; i <= MAX_DATA_SIZE; i *= 2)
     {
         WriteCompactSize(ss, i-1);
         WriteCompactSize(ss, i);
     }
-    for (i = 1; i <= MAX_SIZE; i *= 2)
+    for (i = 1; i <= MAX_DATA_SIZE; i *= 2)
     {
         j = ReadCompactSize(ss);
         BOOST_CHECK_MESSAGE((i-1) == j, "decoded:" << j << " expected:" << (i-1));

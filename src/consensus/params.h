@@ -7,8 +7,8 @@
 #define BITCOIN_CONSENSUS_PARAMS_H
 
 #include "uint256.h"
-
-#include <boost/optional.hpp>
+#include "key_constants.h"
+#include <optional>
 
 namespace Consensus {
 
@@ -74,7 +74,7 @@ struct Params {
     NetworkUpgrade vUpgrades[MAX_NETWORK_UPGRADES];
     /** Proof of work parameters */
     uint256 powLimit;
-    boost::optional<uint32_t> nPowAllowMinDifficultyBlocksAfterHeight;
+    std::optional<uint32_t> nPowAllowMinDifficultyBlocksAfterHeight;
     int64_t nPowAveragingWindow;
     int64_t nPowMaxAdjustDown;
     int64_t nPowMaxAdjustUp;

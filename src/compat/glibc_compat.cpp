@@ -19,9 +19,7 @@ extern "C" void* memcpy(void* a, const void* b, size_t c)
 {
     return memmove(a, b, c);
 }
-#endif
 
-#ifdef __GLIBC__
 extern "C" void __chk_fail(void) __attribute__((__noreturn__));
 extern "C" FDELT_TYPE __fdelt_warn(FDELT_TYPE a)
 {

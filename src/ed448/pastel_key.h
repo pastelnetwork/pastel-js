@@ -1,4 +1,4 @@
-// Copyright (c) 2018 The PASTEL-Coin developers
+// Copyright (c) 2018-2021 The PASTEL-Coin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -22,7 +22,7 @@ public:
             key.write_private_key_to_PKCS8_file(GetKeyFilePath(pastelID), passPhrase.c_str());
             return pastelID;
         } catch (ed_crypto::crypto_exception& ex) {
-            throw runtime_error(ex.what());
+            throw std::runtime_error(ex.what());
         }
         return std::string{};
     }
@@ -34,7 +34,7 @@ public:
 			ed_crypto::buffer sigBuf = ed_crypto::crypto_sign::sign(text, length, key);
 			return sigBuf.data();
 		} catch (ed_crypto::crypto_exception& ex) {
-			throw runtime_error(ex.what());
+            throw std::runtime_error(ex.what());
 		}
 		return std::vector<unsigned char>{};
 	}
@@ -46,7 +46,7 @@ public:
             ed_crypto::key_dsa448 key = ed_crypto::key_dsa448::create_from_raw_public(rawPubKey.data(), rawPubKey.size());
             return ed_crypto::crypto_sign::verify(message, msglen, signature, siglen, key);
         } catch (ed_crypto::crypto_exception& ex) {
-            throw runtime_error(ex.what());
+            throw std::runtime_error(ex.what());
         }
         return false;
     }
@@ -58,7 +58,7 @@ public:
             ed_crypto::buffer sigBuf = ed_crypto::crypto_sign::sign(text, key);
             return sigBuf.Base64(); //!!!
         } catch (ed_crypto::crypto_exception& ex) {
-            throw runtime_error(ex.what());
+            throw std::runtime_error(ex.what());
         }
         return std::string{};
     }
@@ -70,20 +70,19 @@ public:
             ed_crypto::key_dsa448 key = ed_crypto::key_dsa448::create_from_raw_public(rawPubKey.data(), rawPubKey.size());
             return ed_crypto::crypto_sign::verify_base64(text, signature, key);
         } catch (ed_crypto::crypto_exception& ex) {
-            throw runtime_error(ex.what());
+            throw std::runtime_error(ex.what());
         }
         return false;
     }
 
     static std::vector<std::string> GetStoredPastelIDs()
     {
-        boost::filesystem::path pathPastelKeys(GetArg("-pastelkeysdir", "pastelkeys"));
+        fs::path pathPastelKeys(GetArg("-pastelkeysdir", "pastelkeys"));
         pathPastelKeys = GetDataDir() / pathPastelKeys;
 
         std::vector<std::string> vec;
-        for(auto & p : boost::filesystem::directory_iterator( pathPastelKeys )){
+        for (const auto & p : fs::directory_iterator( pathPastelKeys ))
             vec.push_back(p.path().filename().string());
-        }
         return vec;
     }
 
@@ -113,15 +112,15 @@ private:
 
     static std::string GetKeyFilePath(const std::string& fileName)
     {
-        boost::filesystem::path pathPastelKeys(GetArg("-pastelkeysdir", "pastelkeys"));
+        fs::path pathPastelKeys(GetArg("-pastelkeysdir", "pastelkeys"));
         pathPastelKeys = GetDataDir() / pathPastelKeys;
 
-        if (!boost::filesystem::exists(pathPastelKeys) ||
-            !boost::filesystem::is_directory(pathPastelKeys)) {
-            boost::filesystem::create_directories(pathPastelKeys);
+        if (!fs::exists(pathPastelKeys) ||
+            !fs::is_directory(pathPastelKeys)) {
+            fs::create_directories(pathPastelKeys);
         }
 
-        boost::filesystem::path pathPastelKeyFile = pathPastelKeys / fileName;
+       fs::path pathPastelKeyFile = pathPastelKeys / fileName;
         return pathPastelKeyFile.string();
     }
 };

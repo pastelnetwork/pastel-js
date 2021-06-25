@@ -1,18 +1,14 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2014 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #include "script/standard.h"
-
+#include "script/script.h"
 #include <base58.h>
 #include "pubkey.h"
-#include "script/script.h"
 #include "util.h"
 #include "utilstrencodings.h"
-
-#include <boost/foreach.hpp>
-
 using namespace std;
 
 typedef vector<unsigned char> valtype;
@@ -71,9 +67,8 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
 
     // Scan templates
     const CScript& script1 = scriptPubKey;
-    BOOST_FOREACH(const PAIRTYPE(txnouttype, CScript)& tplate, mTemplates)
+    for(const auto &[txOut, script2] : mTemplates)
     {
-        const CScript& script2 = tplate.second;
         vSolutionsRet.clear();
 
         opcodetype opcode1, opcode2;
@@ -87,7 +82,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
             if (pc1 == script1.end() && pc2 == script2.end())
             {
                 // Found a match
-                typeRet = tplate.first;
+                typeRet = txOut;
                 if (typeRet == TX_MULTISIG)
                 {
                     // Additional checks for TX_MULTISIG:
@@ -273,7 +268,7 @@ bool ExtractDestinations(const CScript& scriptPubKey, txnouttype& typeRet, vecto
 
 namespace
 {
-class CScriptVisitor : public boost::static_visitor<bool>
+class CScriptVisitor
 {
 private:
     CScript *script;
@@ -303,7 +298,7 @@ CScript GetScriptForDestination(const CTxDestination& dest)
 {
     CScript script;
 
-    boost::apply_visitor(CScriptVisitor(&script), dest);
+    std::visit(CScriptVisitor(&script), dest);
     return script;
 }
 
@@ -312,51 +307,36 @@ CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys)
     CScript script;
 
     script << CScript::EncodeOP_N(nRequired);
-    BOOST_FOREACH(const CPubKey& key, keys)
+    for (const auto& key : keys)
         script << ToByteVector(key);
     script << CScript::EncodeOP_N(keys.size()) << OP_CHECKMULTISIG;
     return script;
 }
 
-// CTxDestination DecodeDestination(const std::string& str, const CChainParams& params)
-// {
-//     std::vector<unsigned char> data;
-//     uint160 hash;
-//     if (DecodeBase58Check(str, data)) {
-//         // base58-encoded Bitcoin addresses.
-//         // Public-key-hash-addresses have first bite = 0x05 (or 0x14 testnet).
-//         // The data vector contains RIPEMD160(SHA256(pubkey)), where pubkey is the serialized public key.
-//         const std::vector<unsigned char>& pubkey_prefix = params.Base58Prefix(CChainParams::Base58Type::PUBKEY_ADDRESS);
-//         if (data.size() == hash.size() + pubkey_prefix.size() && std::equal(pubkey_prefix.begin(), pubkey_prefix.end(), data.begin())) {
-//             std::copy(data.begin() + pubkey_prefix.size(), data.end(), hash.begin());
-//             return CKeyID(hash);
-//         }
-//         // Script-hash-addresses have first bite = 0x12 (or 0x15 testnet).
-//         // The data vector contains RIPEMD160(SHA256(cscript)), where cscript is the serialized redemption script.
-//         const std::vector<unsigned char>& script_prefix = params.Base58Prefix(CChainParams::Base58Type::SCRIPT_ADDRESS);
-//         if (data.size() == hash.size() + script_prefix.size() && std::equal(script_prefix.begin(), script_prefix.end(), data.begin())) {
-//             std::copy(data.begin() + script_prefix.size(), data.end(), hash.begin());
-//             return CScriptID(hash);
-//         }
-//     }
-//     return CNoDestination();
-// }
+bool IsValidDestination(const CTxDestination& dest) {
+    return !std::holds_alternative<CNoDestination>(dest);
+}
 
-// CTxDestination DecodeDestination(const std::string& str)
-// {
-//     return DecodeDestination(str, Params());
-// }
+bool IsKeyDestination(const CTxDestination& dest) {
+    return std::holds_alternative<CKeyID>(dest);
+}
 
-// bool IsValidDestinationString(const std::string& str, const CChainParams& params)
-// {
-//     return IsValidDestination(DecodeDestination(str, params));
-// }
+bool IsScriptDestination(const CTxDestination& dest) {
+    return std::holds_alternative<CScriptID>(dest);
+}
 
-// bool IsValidDestinationString(const std::string& str)
-// {
-//     return IsValidDestinationString(str, Params());
-// }
-
-// bool IsValidDestination(const CTxDestination& dest) {
-//     return dest.which() != 0;
-// }
+// insightexplorer
+CTxDestination DestFromAddressHash(CScript::ScriptType scriptType, uint160& addressHash)
+{
+    switch (scriptType) {
+    case CScript::ScriptType::P2PKH:
+        return CTxDestination(CKeyID(addressHash));
+    case CScript::ScriptType::P2SH:
+        return CTxDestination(CScriptID(addressHash));
+    default:
+        // This probably won't ever happen, because it would mean that
+        // the addressindex contains a type (say, 3) that we (currently)
+        // don't recognize; maybe we "dropped support" for it?
+        return CNoDestination();
+    }
+}

@@ -1,11 +1,13 @@
 #ifndef BITCOIN_TEST_TEST_BITCOIN_H
 #define BITCOIN_TEST_TEST_BITCOIN_H
 
+#include "chainparamsbase.h"
 #include "consensus/upgrades.h"
+#include "fs.h"
+#include "key.h"
 #include "pubkey.h"
 #include "txdb.h"
 
-#include <boost/filesystem.hpp>
 #include <boost/thread.hpp>
 
 /** Basic testing setup.
@@ -30,8 +32,8 @@ struct JoinSplitTestingSetup: public BasicTestingSetup {
  */
 struct TestingSetup: public JoinSplitTestingSetup {
     CCoinsViewDB *pcoinsdbview;
-    boost::filesystem::path orig_current_path;
-    boost::filesystem::path pathTemp;
+    fs::path orig_current_path;
+    fs::path pathTemp;
     boost::thread_group threadGroup;
 
     TestingSetup();
@@ -68,4 +70,5 @@ struct TestMemPoolEntryHelper
     TestMemPoolEntryHelper &SpendsCoinbase(bool _flag) { spendsCoinbase = _flag; return *this; }
     TestMemPoolEntryHelper &BranchId(uint32_t _branchId) { nBranchId = _branchId; return *this; }
 };
+
 #endif

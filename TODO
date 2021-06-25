@@ -1,0 +1,3 @@
+- Check endian.h file. Emscripten has redefinition error with functions from endian.h file. Emscripten has not <sys/endian.h>.
+- random_bytes from sodium library fails in runtime.
+- main.cpp file has static_assert with <size_t> and <int64_t> which fails cos wasm has ABI 32.

@@ -26,8 +26,6 @@
 #include <arpa/inet.h>
 #endif
 
-#include <boost/filesystem/path.hpp>
-#include <boost/foreach.hpp>
 #include <boost/signals2/signal.hpp>
 
 class CAddrMan;
@@ -62,8 +60,8 @@ static const unsigned int DEFAULT_MAX_PEER_CONNECTIONS = 125;
 /** The period before a network upgrade activates, where connections to upgrading peers are preferred (in blocks). */
 static const int NETWORK_UPGRADE_PEER_PREFERENCE_BLOCK_PERIOD = 24 * 24 * 3;
 
-unsigned int ReceiveFloodSize();
-unsigned int SendBufferSize();
+size_t ReceiveFloodSize();
+size_t SendBufferSize();
 
 void AddOneShot(const std::string& strDest);
 void AddressCurrentlyConnected(const CService& addr);
@@ -362,12 +360,12 @@ public:
     }
 
     // requires LOCK(cs_vRecvMsg)
-    unsigned int GetTotalRecvSize()
+    size_t GetTotalRecvSize()
     {
-        unsigned int total = 0;
-        BOOST_FOREACH(const CNetMessage &msg, vRecvMsg)
-            total += msg.vRecv.size() + 24;
-        return total;
+        size_t nTotalSize = 0;
+        for (const auto &msg : vRecvMsg)
+            nTotalSize += msg.vRecv.size() + 24;
+        return nTotalSize;
     }
 
     // requires LOCK(cs_vRecvMsg)
@@ -377,7 +375,7 @@ public:
     void SetRecvVersion(int nVersionIn)
     {
         nRecvVersion = nVersionIn;
-        BOOST_FOREACH(CNetMessage &msg, vRecvMsg)
+        for(auto &msg : vRecvMsg)
             msg.SetVersion(nVersionIn);
     }
 
@@ -651,7 +649,8 @@ void RelayTransaction(const CTransaction& tx, const CDataStream& ss);
 class CAddrDB
 {
 private:
-    boost::filesystem::path pathAddr;
+    fs::path pathAddr;
+
 public:
     CAddrDB();
     bool Write(const CAddrMan& addr);

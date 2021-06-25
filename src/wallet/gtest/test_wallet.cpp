@@ -4,6 +4,7 @@
 
 #include "base58.h"
 #include "chainparams.h"
+#include "fs.h"
 #include "key_io.h"
 #include "main.h"
 #include "primitives/block.h"
@@ -15,7 +16,7 @@
 #include "zcash/Note.hpp"
 #include "zcash/NoteEncryption.hpp"
 
-#include <boost/filesystem.hpp>
+#include <optional>
 
 using ::testing::Return;
 
@@ -124,8 +125,8 @@ std::pair<JSOutPoint, SaplingOutPoint> CreateValidBlock(TestWallet& wallet,
 std::pair<uint256, uint256> GetWitnessesAndAnchors(TestWallet& wallet,
                                 std::vector<JSOutPoint>& sproutNotes,
                                 std::vector<SaplingOutPoint>& saplingNotes,
-                                std::vector<boost::optional<SproutWitness>>& sproutWitnesses,
-                                std::vector<boost::optional<SaplingWitness>>& saplingWitnesses) {
+                                std::vector<std::optional<SproutWitness>>& sproutWitnesses,
+                                std::vector<std::optional<SaplingWitness>>& saplingWitnesses) {
     sproutWitnesses.clear();
     saplingWitnesses.clear();
     uint256 sproutAnchor;
@@ -137,8 +138,8 @@ std::pair<uint256, uint256> GetWitnessesAndAnchors(TestWallet& wallet,
 
 TEST(WalletTests, SetupDatadirLocationRunAsFirstTest) {
     // Get temporary and unique path for file.
-    boost::filesystem::path pathTemp = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path();
-    boost::filesystem::create_directories(pathTemp);
+    fs::path pathTemp = fs::temp_directory_path() / fs::unique_path();
+    fs::create_directories(pathTemp);
     mapArgs["-datadir"] = pathTemp.string();
 }
 
@@ -169,6 +170,7 @@ TEST(WalletTests, SproutNoteDataSerialisation) {
 TEST(WalletTests, FindUnspentSproutNotes) {
     SelectParams(CBaseChainParams::Network::TESTNET);
     CWallet wallet;
+    LOCK2(cs_main, wallet.cs_wallet);
     auto sk = libzcash::SproutSpendingKey::random();
     wallet.AddSproutSpendingKey(sk);
 
@@ -362,17 +364,16 @@ TEST(WalletTests, SetSaplingNoteAddrsInCWalletTx) {
     auto consensusParams = Params().GetConsensus();
 
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
 
-    std::vector<unsigned char, secure_allocator<unsigned char>> rawSeed(32);
-    HDSeed seed(rawSeed);
-    auto sk = libzcash::SaplingExtendedSpendingKey::Master(seed);
+    auto sk = GetTestMasterSaplingSpendingKey();
     auto expsk = sk.expsk;
     auto fvk = expsk.full_viewing_key();
     auto ivk = fvk.in_viewing_key();
     auto pk = sk.DefaultAddress();
 
     libzcash::SaplingNote note(pk, 50000);
-    auto cm = note.cm().get();
+    auto cm = note.cm().value();
     SaplingMerkleTree tree;
     tree.append(cm);
     auto anchor = tree.root();
@@ -380,7 +381,7 @@ TEST(WalletTests, SetSaplingNoteAddrsInCWalletTx) {
 
     auto nf = note.nullifier(fvk, witness.position());
     ASSERT_TRUE(nf);
-    uint256 nullifier = nf.get();
+    uint256 nullifier = nf.value();
 
     auto builder = TransactionBuilder(consensusParams, 1);
     builder.AddSaplingSpend(expsk, note, anchor, witness);
@@ -482,18 +483,17 @@ TEST(WalletTests, FindMySaplingNotes) {
     auto consensusParams = Params().GetConsensus();
 
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     // Generate dummy Sapling address
-    std::vector<unsigned char, secure_allocator<unsigned char>> rawSeed(32);
-    HDSeed seed(rawSeed);
-    auto sk = libzcash::SaplingExtendedSpendingKey::Master(seed);
+    auto sk = GetTestMasterSaplingSpendingKey();
     auto expsk = sk.expsk;
-    auto fvk = expsk.full_viewing_key();
+    auto extfvk = sk.ToXFVK();
     auto pk = sk.DefaultAddress();
 
     // Generate dummy Sapling note
     libzcash::SaplingNote note(pk, 50000);
-    auto cm = note.cm().get();
+    auto cm = note.cm().value();
     SaplingMerkleTree tree;
     tree.append(cm);
     auto anchor = tree.root();
@@ -502,18 +502,18 @@ TEST(WalletTests, FindMySaplingNotes) {
     // Generate transaction
     auto builder = TransactionBuilder(consensusParams, 1);
     builder.AddSaplingSpend(expsk, note, anchor, witness);
-    builder.AddSaplingOutput(fvk.ovk, pk, 25000, {});
+    builder.AddSaplingOutput(extfvk.fvk.ovk, pk, 25000, {});
     auto tx = builder.Build().GetTxOrThrow();
 
     // No Sapling notes can be found in tx which does not belong to the wallet
     CWalletTx wtx {&wallet, tx};
-    ASSERT_FALSE(wallet.HaveSaplingSpendingKey(fvk));
+    ASSERT_FALSE(wallet.HaveSaplingSpendingKey(extfvk));
     auto noteMap = wallet.FindMySaplingNotes(wtx).first;
     EXPECT_EQ(0, noteMap.size());
 
     // Add spending key to wallet, so Sapling notes can be found
-    ASSERT_TRUE(wallet.AddSaplingZKey(sk, pk));
-    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(fvk));
+    ASSERT_TRUE(wallet.AddSaplingZKey(sk));
+    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(extfvk));
     noteMap = wallet.FindMySaplingNotes(wtx).first;
     EXPECT_EQ(2, noteMap.size());
 
@@ -524,6 +524,7 @@ TEST(WalletTests, FindMySaplingNotes) {
 
 TEST(WalletTests, FindMySproutNotes) {
     CWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     auto sk = libzcash::SproutSpendingKey::random();
     auto sk2 = libzcash::SproutSpendingKey::random();
@@ -549,6 +550,7 @@ TEST(WalletTests, FindMySproutNotes) {
 
 TEST(WalletTests, FindMySproutNotesInEncryptedWallet) {
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
     uint256 r {GetRandHash()};
     CKeyingMaterial vMasterKey (r.begin(), r.end());
 
@@ -579,6 +581,7 @@ TEST(WalletTests, FindMySproutNotesInEncryptedWallet) {
 
 TEST(WalletTests, GetConflictedSproutNotes) {
     CWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     auto sk = libzcash::SproutSpendingKey::random();
     wallet.AddSproutSpendingKey(sk);
@@ -616,22 +619,21 @@ TEST(WalletTests, GetConflictedSaplingNotes) {
     auto consensusParams = Params().GetConsensus();
 
     TestWallet wallet;
+    LOCK2(cs_main, wallet.cs_wallet);
 
     // Generate Sapling address
-    std::vector<unsigned char, secure_allocator<unsigned char>> rawSeed(32);
-    HDSeed seed(rawSeed);
-    auto sk = libzcash::SaplingExtendedSpendingKey::Master(seed);
+    auto sk = GetTestMasterSaplingSpendingKey();
     auto expsk = sk.expsk;
-    auto fvk = expsk.full_viewing_key();
-    auto ivk = fvk.in_viewing_key();
+    auto extfvk = sk.ToXFVK();
+    auto ivk = extfvk.fvk.in_viewing_key();
     auto pk = sk.DefaultAddress();
 
-    ASSERT_TRUE(wallet.AddSaplingZKey(sk, pk));
-    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(fvk));
+    ASSERT_TRUE(wallet.AddSaplingZKey(sk));
+    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(extfvk));
 
     // Generate note A
     libzcash::SaplingNote note(pk, 50000);
-    auto cm = note.cm().get();
+    auto cm = note.cm().value();
     SaplingMerkleTree saplingTree;
     saplingTree.append(cm);
     auto anchor = saplingTree.root();
@@ -640,7 +642,7 @@ TEST(WalletTests, GetConflictedSaplingNotes) {
     // Generate tx to create output note B
     auto builder = TransactionBuilder(consensusParams, 1);
     builder.AddSaplingSpend(expsk, note, anchor, witness);
-    builder.AddSaplingOutput(fvk.ovk, pk, 35000, {});
+    builder.AddSaplingOutput(extfvk.fvk.ovk, pk, 35000, {});
     auto tx = builder.Build().GetTxOrThrow();
     CWalletTx wtx {&wallet, tx};
 
@@ -679,28 +681,28 @@ TEST(WalletTests, GetConflictedSaplingNotes) {
             wtx.vShieldedOutput[0].ephemeralKey,
             wtx.vShieldedOutput[0].cm);
     ASSERT_EQ(static_cast<bool>(maybe_pt), true);
-    auto maybe_note = maybe_pt.get().note(ivk);
+    auto maybe_note = maybe_pt.value().note(ivk);
     ASSERT_EQ(static_cast<bool>(maybe_note), true);
-    auto note2 = maybe_note.get();
+    auto note2 = maybe_note.value();
 
     SaplingOutPoint sop0(wtx.GetHash(), 0);
     auto spend_note_witness =  wtx.mapSaplingNoteData[sop0].witnesses.front();
-    auto maybe_nf = note2.nullifier(fvk, spend_note_witness.position());
+    auto maybe_nf = note2.nullifier(extfvk.fvk, spend_note_witness.position());
     ASSERT_EQ(static_cast<bool>(maybe_nf), true);
-    auto nullifier2 = maybe_nf.get();
+    auto nullifier2 = maybe_nf.value();
 
     anchor = saplingTree.root();
 
     // Create transaction to spend note B
     auto builder2 = TransactionBuilder(consensusParams, 2);
     builder2.AddSaplingSpend(expsk, note2, anchor, spend_note_witness);
-    builder2.AddSaplingOutput(fvk.ovk, pk, 20000, {});
+    builder2.AddSaplingOutput(extfvk.fvk.ovk, pk, 20000, {});
     auto tx2 = builder2.Build().GetTxOrThrow();
 
     // Create conflicting transaction which also spends note B
     auto builder3 = TransactionBuilder(consensusParams, 2);
     builder3.AddSaplingSpend(expsk, note2, anchor, spend_note_witness);
-    builder3.AddSaplingOutput(fvk.ovk, pk, 19999, {});
+    builder3.AddSaplingOutput(extfvk.fvk.ovk, pk, 19999, {});
     auto tx3 = builder3.Build().GetTxOrThrow();
 
     CWalletTx wtx2 {&wallet, tx2};
@@ -734,6 +736,7 @@ TEST(WalletTests, GetConflictedSaplingNotes) {
 
 TEST(WalletTests, SproutNullifierIsSpent) {
     CWallet wallet;
+    LOCK2(cs_main, wallet.cs_wallet);
 
     auto sk = libzcash::SproutSpendingKey::random();
     wallet.AddSproutSpendingKey(sk);
@@ -779,18 +782,17 @@ TEST(WalletTests, SaplingNullifierIsSpent) {
     auto consensusParams = Params().GetConsensus();
 
     TestWallet wallet;
+    LOCK2(cs_main, wallet.cs_wallet);
 
     // Generate dummy Sapling address
-    std::vector<unsigned char, secure_allocator<unsigned char>> rawSeed(32);
-    HDSeed seed(rawSeed);
-    auto sk = libzcash::SaplingExtendedSpendingKey::Master(seed);
+    auto sk = GetTestMasterSaplingSpendingKey();
     auto expsk = sk.expsk;
-    auto fvk = expsk.full_viewing_key();
+    auto extfvk = sk.ToXFVK();
     auto pk = sk.DefaultAddress();
 
     // Generate dummy Sapling note
     libzcash::SaplingNote note(pk, 50000);
-    auto cm = note.cm().get();
+    auto cm = note.cm().value();
     SaplingMerkleTree tree;
     tree.append(cm);
     auto anchor = tree.root();
@@ -799,17 +801,17 @@ TEST(WalletTests, SaplingNullifierIsSpent) {
     // Generate transaction
     auto builder = TransactionBuilder(consensusParams, 1);
     builder.AddSaplingSpend(expsk, note, anchor, witness);
-    builder.AddSaplingOutput(fvk.ovk, pk, 25000, {});
+    builder.AddSaplingOutput(extfvk.fvk.ovk, pk, 25000, {});
     auto tx = builder.Build().GetTxOrThrow();
 
     CWalletTx wtx {&wallet, tx};
-    ASSERT_TRUE(wallet.AddSaplingZKey(sk, pk));
-    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(fvk));
+    ASSERT_TRUE(wallet.AddSaplingZKey(sk));
+    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(extfvk));
 
     // Manually compute the nullifier based on the known position
-    auto nf = note.nullifier(fvk, witness.position());
+    auto nf = note.nullifier(extfvk.fvk, witness.position());
     ASSERT_TRUE(nf);
-    uint256 nullifier = nf.get();
+    uint256 nullifier = nf.value();
 
     // Verify note has not been spent
     EXPECT_FALSE(wallet.IsSaplingSpent(nullifier));
@@ -843,6 +845,7 @@ TEST(WalletTests, SaplingNullifierIsSpent) {
 
 TEST(WalletTests, NavigateFromSproutNullifierToNote) {
     CWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     auto sk = libzcash::SproutSpendingKey::random();
     wallet.AddSproutSpendingKey(sk);
@@ -874,18 +877,17 @@ TEST(WalletTests, NavigateFromSaplingNullifierToNote) {
     auto consensusParams = Params().GetConsensus();
 
     TestWallet wallet;
+    LOCK2(cs_main, wallet.cs_wallet);
 
     // Generate dummy Sapling address
-    std::vector<unsigned char, secure_allocator<unsigned char>> rawSeed(32);
-    HDSeed seed(rawSeed);
-    auto sk = libzcash::SaplingExtendedSpendingKey::Master(seed);
+    auto sk = GetTestMasterSaplingSpendingKey();
     auto expsk = sk.expsk;
-    auto fvk = expsk.full_viewing_key();
+    auto extfvk = sk.ToXFVK();
     auto pk = sk.DefaultAddress();
 
     // Generate dummy Sapling note
     libzcash::SaplingNote note(pk, 50000);
-    auto cm = note.cm().get();
+    auto cm = note.cm().value();
     SaplingMerkleTree saplingTree;
     saplingTree.append(cm);
     auto anchor = saplingTree.root();
@@ -894,17 +896,17 @@ TEST(WalletTests, NavigateFromSaplingNullifierToNote) {
     // Generate transaction
     auto builder = TransactionBuilder(consensusParams, 1);
     builder.AddSaplingSpend(expsk, note, anchor, witness);
-    builder.AddSaplingOutput(fvk.ovk, pk, 25000, {});
+    builder.AddSaplingOutput(extfvk.fvk.ovk, pk, 25000, {});
     auto tx = builder.Build().GetTxOrThrow();
 
     CWalletTx wtx {&wallet, tx};
-    ASSERT_TRUE(wallet.AddSaplingZKey(sk, pk));
-    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(fvk));
+    ASSERT_TRUE(wallet.AddSaplingZKey(sk));
+    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(extfvk));
 
     // Manually compute the nullifier based on the expected position
-    auto nf = note.nullifier(fvk, witness.position());
+    auto nf = note.nullifier(extfvk.fvk, witness.position());
     ASSERT_TRUE(nf);
-    uint256 nullifier = nf.get();
+    uint256 nullifier = nf.value();
 
     // Verify dummy note is unspent
     EXPECT_FALSE(wallet.IsSaplingSpent(nullifier));
@@ -956,7 +958,7 @@ TEST(WalletTests, NavigateFromSaplingNullifierToNote) {
         EXPECT_EQ(hash, op.hash);
         EXPECT_EQ(1, nd.witnesses.size());
         ASSERT_TRUE(nd.nullifier);
-        auto nf = nd.nullifier.get();
+        auto nf = nd.nullifier.value();
         EXPECT_EQ(1, wallet.mapSaplingNullifiersToNotes.count(nf));
         EXPECT_EQ(op.hash, wallet.mapSaplingNullifiersToNotes[nf].hash);
         EXPECT_EQ(op.n, wallet.mapSaplingNullifiersToNotes[nf].n);
@@ -973,6 +975,7 @@ TEST(WalletTests, NavigateFromSaplingNullifierToNote) {
 
 TEST(WalletTests, SpentSproutNoteIsFromMe) {
     CWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     auto sk = libzcash::SproutSpendingKey::random();
     wallet.AddSproutSpendingKey(sk);
@@ -1007,19 +1010,18 @@ TEST(WalletTests, SpentSaplingNoteIsFromMe) {
     auto consensusParams = Params().GetConsensus();
 
     TestWallet wallet;
+    LOCK2(cs_main, wallet.cs_wallet);
 
     // Generate Sapling address
-    std::vector<unsigned char, secure_allocator<unsigned char>> rawSeed(32);
-    HDSeed seed(rawSeed);
-    auto sk = libzcash::SaplingExtendedSpendingKey::Master(seed);
+    auto sk = GetTestMasterSaplingSpendingKey();
     auto expsk = sk.expsk;
-    auto fvk = expsk.full_viewing_key();
-    auto ivk = fvk.in_viewing_key();
+    auto extfvk = sk.ToXFVK();
+    auto ivk = extfvk.fvk.in_viewing_key();
     auto pk = sk.DefaultAddress();
 
     // Generate Sapling note A
     libzcash::SaplingNote note(pk, 50000);
-    auto cm = note.cm().get();
+    auto cm = note.cm().value();
     SaplingMerkleTree saplingTree;
     saplingTree.append(cm);
     auto anchor = saplingTree.root();
@@ -1028,12 +1030,12 @@ TEST(WalletTests, SpentSaplingNoteIsFromMe) {
     // Generate transaction, which sends funds to note B
     auto builder = TransactionBuilder(consensusParams, 1);
     builder.AddSaplingSpend(expsk, note, anchor, witness);
-    builder.AddSaplingOutput(fvk.ovk, pk, 25000, {});
+    builder.AddSaplingOutput(extfvk.fvk.ovk, pk, 25000, {});
     auto tx = builder.Build().GetTxOrThrow();
 
     CWalletTx wtx {&wallet, tx};
-    ASSERT_TRUE(wallet.AddSaplingZKey(sk, pk));
-    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(fvk));
+    ASSERT_TRUE(wallet.AddSaplingZKey(sk));
+    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(extfvk));
 
     // Fake-mine the transaction
     EXPECT_EQ(-1, chainActive.Height());
@@ -1069,9 +1071,9 @@ TEST(WalletTests, SpentSaplingNoteIsFromMe) {
     EXPECT_FALSE(wallet.IsFromMe(wtx));
 
     // Manually compute the nullifier and check map entry does not exist
-    auto nf = note.nullifier(fvk, witness.position());
+    auto nf = note.nullifier(extfvk.fvk, witness.position());
     ASSERT_TRUE(nf);
-    ASSERT_FALSE(wallet.mapSaplingNullifiersToNotes.count(nf.get()));
+    ASSERT_FALSE(wallet.mapSaplingNullifiersToNotes.count(nf.value()));
 
     // Decrypt note B
     auto maybe_pt = libzcash::SaplingNotePlaintext::decrypt(
@@ -1080,16 +1082,16 @@ TEST(WalletTests, SpentSaplingNoteIsFromMe) {
         wtx.vShieldedOutput[0].ephemeralKey,
         wtx.vShieldedOutput[0].cm);
     ASSERT_EQ(static_cast<bool>(maybe_pt), true);
-    auto maybe_note = maybe_pt.get().note(ivk);
+    auto maybe_note = maybe_pt.value().note(ivk);
     ASSERT_EQ(static_cast<bool>(maybe_note), true);
-    auto note2 = maybe_note.get();
+    auto note2 = maybe_note.value();
 
     // Get witness to retrieve position of note B we want to spend
     SaplingOutPoint sop0(wtx.GetHash(), 0);
     auto spend_note_witness =  wtx.mapSaplingNoteData[sop0].witnesses.front();
-    auto maybe_nf = note2.nullifier(fvk, spend_note_witness.position());
+    auto maybe_nf = note2.nullifier(extfvk.fvk, spend_note_witness.position());
     ASSERT_EQ(static_cast<bool>(maybe_nf), true);
-    auto nullifier2 = maybe_nf.get();
+    auto nullifier2 = maybe_nf.value();
 
     // NOTE: Not updating the anchor results in a core dump.  Shouldn't builder just return error?
     // *** Error in `./zcash-gtest': double free or corruption (out): 0x00007ffd8755d990 ***
@@ -1098,7 +1100,7 @@ TEST(WalletTests, SpentSaplingNoteIsFromMe) {
     // Create transaction to spend note B
     auto builder2 = TransactionBuilder(consensusParams, 2);
     builder2.AddSaplingSpend(expsk, note2, anchor, spend_note_witness);
-    builder2.AddSaplingOutput(fvk.ovk, pk, 12500, {});
+    builder2.AddSaplingOutput(extfvk.fvk.ovk, pk, 12500, {});
     auto tx2 = builder2.Build().GetTxOrThrow();
     EXPECT_EQ(tx2.vin.size(), 0);
     EXPECT_EQ(tx2.vout.size(), 0);
@@ -1170,8 +1172,8 @@ TEST(WalletTests, CachedWitnessesEmptyChain) {
     std::vector<JSOutPoint> sproutNotes {jsoutpt, jsoutpt2};
     std::vector<SaplingOutPoint> saplingNotes = SetSaplingNoteData(wtx);
 
-    std::vector<boost::optional<SproutWitness>> sproutWitnesses;
-    std::vector<boost::optional<SaplingWitness>> saplingWitnesses;
+    std::vector<std::optional<SproutWitness>> sproutWitnesses;
+    std::vector<std::optional<SaplingWitness>> saplingWitnesses;
 
     ::GetWitnessesAndAnchors(wallet, sproutNotes, saplingNotes, sproutWitnesses, saplingWitnesses);
 
@@ -1207,6 +1209,7 @@ TEST(WalletTests, CachedWitnessesEmptyChain) {
 
 TEST(WalletTests, CachedWitnessesChainTip) {
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
     std::pair<uint256, uint256> anchors1;
     CBlock block1;
     SproutMerkleTree sproutTree;
@@ -1224,8 +1227,8 @@ TEST(WalletTests, CachedWitnessesChainTip) {
         // Called to fetch anchor
         std::vector<JSOutPoint> sproutNotes {outpts.first};
         std::vector<SaplingOutPoint> saplingNotes {outpts.second};
-        std::vector<boost::optional<SproutWitness>> sproutWitnesses;
-        std::vector<boost::optional<SaplingWitness>> saplingWitnesses;
+        std::vector<std::optional<SproutWitness>> sproutWitnesses;
+        std::vector<std::optional<SaplingWitness>> saplingWitnesses;
 
         anchors1 = GetWitnessesAndAnchors(wallet, sproutNotes, saplingNotes, sproutWitnesses, saplingWitnesses);
         EXPECT_NE(anchors1.first, anchors1.second);
@@ -1246,8 +1249,8 @@ TEST(WalletTests, CachedWitnessesChainTip) {
         wallet.AddToWallet(wtx, true, NULL);
 
         std::vector<JSOutPoint> sproutNotes {jsoutpt};
-        std::vector<boost::optional<SproutWitness>> sproutWitnesses;
-        std::vector<boost::optional<SaplingWitness>> saplingWitnesses;
+        std::vector<std::optional<SproutWitness>> sproutWitnesses;
+        std::vector<std::optional<SaplingWitness>> saplingWitnesses;
 
         GetWitnessesAndAnchors(wallet, sproutNotes, saplingNotes, sproutWitnesses, saplingWitnesses);
 
@@ -1294,8 +1297,8 @@ TEST(WalletTests, CachedWitnessesChainTip) {
 
         // Incrementing with the same block again should not change the cache
         wallet.IncrementNoteWitnesses(&index2, &block2, sproutTree, saplingTree);
-        std::vector<boost::optional<SproutWitness>> sproutWitnesses5;
-        std::vector<boost::optional<SaplingWitness>> saplingWitnesses5;
+        std::vector<std::optional<SproutWitness>> sproutWitnesses5;
+        std::vector<std::optional<SaplingWitness>> saplingWitnesses5;
 
         auto anchors5 = GetWitnessesAndAnchors(wallet, sproutNotes, saplingNotes, sproutWitnesses5, saplingWitnesses5);
         EXPECT_NE(anchors5.first, anchors5.second);
@@ -1309,6 +1312,7 @@ TEST(WalletTests, CachedWitnessesChainTip) {
 
 TEST(WalletTests, CachedWitnessesDecrementFirst) {
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
     SproutMerkleTree sproutTree;
     SaplingMerkleTree saplingTree;
 
@@ -1335,8 +1339,8 @@ TEST(WalletTests, CachedWitnessesDecrementFirst) {
         // Called to fetch anchor
         std::vector<JSOutPoint> sproutNotes {outpts.first};
         std::vector<SaplingOutPoint> saplingNotes {outpts.second};
-        std::vector<boost::optional<SproutWitness>> sproutWitnesses;
-        std::vector<boost::optional<SaplingWitness>> saplingWitnesses;
+        std::vector<std::optional<SproutWitness>> sproutWitnesses;
+        std::vector<std::optional<SaplingWitness>> saplingWitnesses;
         anchors2 = GetWitnessesAndAnchors(wallet, sproutNotes, saplingNotes, sproutWitnesses, saplingWitnesses);
     }
 
@@ -1355,8 +1359,8 @@ TEST(WalletTests, CachedWitnessesDecrementFirst) {
         wallet.AddToWallet(wtx, true, NULL);
 
         std::vector<JSOutPoint> sproutNotes {jsoutpt};
-        std::vector<boost::optional<SproutWitness>> sproutWitnesses;
-        std::vector<boost::optional<SaplingWitness>> saplingWitnesses;
+        std::vector<std::optional<SproutWitness>> sproutWitnesses;
+        std::vector<std::optional<SaplingWitness>> saplingWitnesses;
 
         auto anchors3 = GetWitnessesAndAnchors(wallet, sproutNotes, saplingNotes, sproutWitnesses, saplingWitnesses);
 
@@ -1389,6 +1393,7 @@ TEST(WalletTests, CachedWitnessesDecrementFirst) {
 
 TEST(WalletTests, CachedWitnessesCleanIndex) {
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
     std::vector<CBlock> blocks;
     std::vector<CBlockIndex> indices;
     std::vector<JSOutPoint> sproutNotes;
@@ -1399,8 +1404,8 @@ TEST(WalletTests, CachedWitnessesCleanIndex) {
     SproutMerkleTree sproutRiTree = sproutTree;
     SaplingMerkleTree saplingTree;
     SaplingMerkleTree saplingRiTree = saplingTree;
-    std::vector<boost::optional<SproutWitness>> sproutWitnesses;
-    std::vector<boost::optional<SaplingWitness>> saplingWitnesses;
+    std::vector<std::optional<SproutWitness>> sproutWitnesses;
+    std::vector<std::optional<SaplingWitness>> saplingWitnesses;
 
     auto sk = libzcash::SproutSpendingKey::random();
     wallet.AddSproutSpendingKey(sk);
@@ -1476,6 +1481,7 @@ TEST(WalletTests, CachedWitnessesCleanIndex) {
 
 TEST(WalletTests, ClearNoteWitnessCache) {
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     auto sk = libzcash::SproutSpendingKey::random();
     wallet.AddSproutSpendingKey(sk);
@@ -1507,8 +1513,8 @@ TEST(WalletTests, ClearNoteWitnessCache) {
     wallet.AddToWallet(wtx, true, NULL);
 
     std::vector<JSOutPoint> sproutNotes {jsoutpt, jsoutpt2};
-    std::vector<boost::optional<SproutWitness>> sproutWitnesses;
-    std::vector<boost::optional<SaplingWitness>> saplingWitnesses;
+    std::vector<std::optional<SproutWitness>> sproutWitnesses;
+    std::vector<std::optional<SaplingWitness>> saplingWitnesses;
 
     // Before clearing, we should have a witness for one note
     GetWitnessesAndAnchors(wallet, sproutNotes, saplingNotes, sproutWitnesses, saplingWitnesses);
@@ -1534,6 +1540,7 @@ TEST(WalletTests, ClearNoteWitnessCache) {
 
 TEST(WalletTests, WriteWitnessCache) {
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
     MockWalletDB walletdb;
     CBlockLocator loc;
 
@@ -1620,13 +1627,15 @@ TEST(WalletTests, WriteWitnessCache) {
 TEST(WalletTests, SetBestChainIgnoresTxsWithoutShieldedData) {
     SelectParams(CBaseChainParams::Network::REGTEST);
 
+    KeyIO keyIO(Params());
     std::string sKeyError;
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
     MockWalletDB walletdb;
     CBlockLocator loc;
 
     // Set up transparent address
-    const CKey tsk = DecodeSecret(tSecretRegtest, sKeyError);
+    const CKey tsk = keyIO.DecodeSecret(tSecretRegtest, sKeyError);
     wallet.AddKey(tsk);
     auto scriptPubKey = GetScriptForDestination(tsk.GetPubKey().GetID());
 
@@ -1702,6 +1711,7 @@ TEST(WalletTests, SetBestChainIgnoresTxsWithoutShieldedData) {
 
 TEST(WalletTests, UpdateSproutNullifierNoteMap) {
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
     uint256 r {GetRandHash()};
     CKeyingMaterial vMasterKey (r.begin(), r.end());
 
@@ -1737,6 +1747,7 @@ TEST(WalletTests, UpdateSproutNullifierNoteMap) {
 
 TEST(WalletTests, UpdatedSproutNoteData) {
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     auto sk = libzcash::SproutSpendingKey::random();
     wallet.AddSproutSpendingKey(sk);
@@ -1789,26 +1800,25 @@ TEST(WalletTests, UpdatedSaplingNoteData) {
     auto consensusParams = Params().GetConsensus();
 
     TestWallet wallet;
+    LOCK2(cs_main, wallet.cs_wallet);
 
-    std::vector<unsigned char, secure_allocator<unsigned char>> rawSeed(32);
-    HDSeed seed(rawSeed);
-    auto m = libzcash::SaplingExtendedSpendingKey::Master(seed);
+    auto m = GetTestMasterSaplingSpendingKey();
 
     // Generate dummy Sapling address
     auto sk = m.Derive(0);
     auto expsk = sk.expsk;
-    auto fvk = expsk.full_viewing_key();
-    auto pk = sk.DefaultAddress();
+    auto extfvk = sk.ToXFVK();
+    auto pa = sk.DefaultAddress();
 
     // Generate dummy recipient Sapling address
     auto sk2 = m.Derive(1);
     auto expsk2 = sk2.expsk;
-    auto fvk2 = expsk2.full_viewing_key();
-    auto pk2 = sk2.DefaultAddress();
+    auto extfvk2 = sk2.ToXFVK();
+    auto pa2 = sk2.DefaultAddress();
 
     // Generate dummy Sapling note
-    libzcash::SaplingNote note(pk, 50000);
-    auto cm = note.cm().get();
+    libzcash::SaplingNote note(pa, 50000);
+    auto cm = note.cm().value();
     SaplingMerkleTree saplingTree;
     saplingTree.append(cm);
     auto anchor = saplingTree.root();
@@ -1817,14 +1827,14 @@ TEST(WalletTests, UpdatedSaplingNoteData) {
     // Generate transaction
     auto builder = TransactionBuilder(consensusParams, 1);
     builder.AddSaplingSpend(expsk, note, anchor, witness);
-    builder.AddSaplingOutput(fvk.ovk, pk2, 25000, {});
+    builder.AddSaplingOutput(extfvk.fvk.ovk, pa2, 25000, {});
     auto tx = builder.Build().GetTxOrThrow();
 
-    // Wallet contains fvk1 but not fvk2
+    // Wallet contains extfvk but not extfvk
     CWalletTx wtx {&wallet, tx};
-    ASSERT_TRUE(wallet.AddSaplingZKey(sk, pk));
-    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(fvk));
-    ASSERT_FALSE(wallet.HaveSaplingSpendingKey(fvk2));
+    ASSERT_TRUE(wallet.AddSaplingZKey(sk));
+    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(extfvk));
+    ASSERT_FALSE(wallet.HaveSaplingSpendingKey(extfvk2));
 
     // Fake-mine the transaction
     EXPECT_EQ(-1, chainActive.Height());
@@ -1854,9 +1864,9 @@ TEST(WalletTests, UpdatedSaplingNoteData) {
     uint256 hash = wtx.GetHash();
     wtx = wallet.mapWallet[hash];
 
-    // Now lets add key fvk2 so wallet can find the payment note sent to pk2
-    ASSERT_TRUE(wallet.AddSaplingZKey(sk2, pk2));
-    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(fvk2));
+    // Now lets add key extfvk2 so wallet can find the payment note sent to pa2
+    ASSERT_TRUE(wallet.AddSaplingZKey(sk2));
+    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(extfvk2));
     CWalletTx wtx2 = wtx;
     auto saplingNoteData2 = wallet.FindMySaplingNotes(wtx2).first;
     ASSERT_TRUE(saplingNoteData2.size() == 2);
@@ -1906,6 +1916,7 @@ TEST(WalletTests, UpdatedSaplingNoteData) {
 
 TEST(WalletTests, MarkAffectedSproutTransactionsDirty) {
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     auto sk = libzcash::SproutSpendingKey::random();
     wallet.AddSproutSpendingKey(sk);
@@ -1942,23 +1953,23 @@ TEST(WalletTests, MarkAffectedSaplingTransactionsDirty) {
     auto consensusParams = Params().GetConsensus();
 
     TestWallet wallet;
+    LOCK2(cs_main, wallet.cs_wallet);
     std::string sKeyError;
 
     // Generate Sapling address
-    std::vector<unsigned char, secure_allocator<unsigned char>> rawSeed(32);
-    HDSeed seed(rawSeed);
-    auto sk = libzcash::SaplingExtendedSpendingKey::Master(seed);
+    auto sk = GetTestMasterSaplingSpendingKey();
     auto expsk = sk.expsk;
-    auto fvk = expsk.full_viewing_key();
-    auto ivk = fvk.in_viewing_key();
+    auto extfvk = sk.ToXFVK();
+    auto ivk = extfvk.fvk.in_viewing_key();
     auto pk = sk.DefaultAddress();
 
-    ASSERT_TRUE(wallet.AddSaplingZKey(sk, pk));
-    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(fvk));
+    ASSERT_TRUE(wallet.AddSaplingZKey(sk));
+    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(extfvk));
 
+    KeyIO keyIO(Params());
     // Set up transparent address
     CBasicKeyStore keystore;
-    const CKey tsk = DecodeSecret(tSecretRegtest, sKeyError);
+    const CKey tsk = keyIO.DecodeSecret(tSecretRegtest, sKeyError);
     keystore.AddKey(tsk);
     auto scriptPubKey = GetScriptForDestination(tsk.GetPubKey().GetID());
 
@@ -1966,7 +1977,7 @@ TEST(WalletTests, MarkAffectedSaplingTransactionsDirty) {
     // 0.0005 t-ZEC in, 0.0004 z-ZEC out, 0.0001 t-ZEC fee
     auto builder = TransactionBuilder(consensusParams, 1, &keystore);
     builder.AddTransparentInput(COutPoint(), scriptPubKey, 50000);
-    builder.AddSaplingOutput(fvk.ovk, pk, 40000, {});
+    builder.AddSaplingOutput(extfvk.fvk.ovk, pk, 40000, {});
     auto tx1 = builder.Build().GetTxOrThrow();
 
     EXPECT_EQ(tx1.vin.size(), 1);
@@ -2011,9 +2022,9 @@ TEST(WalletTests, MarkAffectedSaplingTransactionsDirty) {
     auto maybe_pt = libzcash::SaplingNotePlaintext::decrypt(
             tx1.vShieldedOutput[0].encCiphertext, ivk, tx1.vShieldedOutput[0].ephemeralKey, tx1.vShieldedOutput[0].cm);
     ASSERT_EQ(static_cast<bool>(maybe_pt), true);
-    auto maybe_note = maybe_pt.get().note(ivk);
+    auto maybe_note = maybe_pt.value().note(ivk);
     ASSERT_EQ(static_cast<bool>(maybe_note), true);
-    auto note = maybe_note.get();
+    auto note = maybe_note.value();
     auto anchor = saplingTree.root();
     auto witness = saplingTree.witness();
 
@@ -2021,7 +2032,7 @@ TEST(WalletTests, MarkAffectedSaplingTransactionsDirty) {
     // 0.0004 z-ZEC in, 0.00025 z-ZEC out, 0.0001 t-ZEC fee, 0.00005 z-ZEC change
     auto builder2 = TransactionBuilder(consensusParams, 2);
     builder2.AddSaplingSpend(expsk, note, anchor, witness);
-    builder2.AddSaplingOutput(fvk.ovk, pk, 25000, {});
+    builder2.AddSaplingOutput(extfvk.fvk.ovk, pk, 25000, {});
     auto tx2 = builder2.Build().GetTxOrThrow();
 
     EXPECT_EQ(tx2.vin.size(), 0);
@@ -2056,6 +2067,7 @@ TEST(WalletTests, MarkAffectedSaplingTransactionsDirty) {
 
 TEST(WalletTests, SproutNoteLocking) {
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     auto sk = libzcash::SproutSpendingKey::random();
     wallet.AddSproutSpendingKey(sk);
@@ -2089,6 +2101,7 @@ TEST(WalletTests, SproutNoteLocking) {
 
 TEST(WalletTests, SaplingNoteLocking) {
     TestWallet wallet;
+    LOCK(wallet.cs_wallet);
     SaplingOutPoint sop1 {uint256(), 1};
     SaplingOutPoint sop2 {uint256(), 2};
 

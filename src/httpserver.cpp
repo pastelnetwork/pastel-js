@@ -37,7 +37,6 @@
 #endif
 
 #include <boost/algorithm/string/case_conv.hpp> // for to_lower()
-#include <boost/foreach.hpp>
 #include <boost/scoped_ptr.hpp>
 
 /** HTTP request work item */
@@ -195,7 +194,7 @@ static bool ClientAllowed(const CNetAddr& netaddr)
 {
     if (!netaddr.IsValid())
         return false;
-    BOOST_FOREACH (const CSubNet& subnet, rpc_allow_subnets)
+    for (const auto& subnet : rpc_allow_subnets)
         if (subnet.Match(netaddr))
             return true;
     return false;
@@ -207,11 +206,14 @@ static bool InitHTTPAllowList()
     rpc_allow_subnets.clear();
     rpc_allow_subnets.push_back(CSubNet("127.0.0.0/8")); // always allow IPv4 local subnet
     rpc_allow_subnets.push_back(CSubNet("::1"));         // always allow IPv6 localhost
-    if (mapMultiArgs.count("-rpcallowip")) {
-        const std::vector<std::string>& vAllow = mapMultiArgs["-rpcallowip"];
-        BOOST_FOREACH (std::string strAllow, vAllow) {
+    if (mapMultiArgs.count("-rpcallowip"))
+    {
+        const auto& vAllow = mapMultiArgs["-rpcallowip"];
+        for (const auto &strAllow : vAllow)
+        {
             CSubNet subnet(strAllow);
-            if (!subnet.IsValid()) {
+            if (!subnet.IsValid())
+            {
                 uiInterface.ThreadSafeMessageBox(
                     strprintf("Invalid -rpcallowip subnet specification: %s. Valid are a single IP (e.g. 1.2.3.4), a network/netmask (e.g. 1.2.3.4/255.255.255.0) or a network/CIDR (e.g. 1.2.3.4/24).", strAllow),
                     "", CClientUIInterface::MSG_ERROR);
@@ -221,7 +223,7 @@ static bool InitHTTPAllowList()
         }
     }
     std::string strAllowed;
-    BOOST_FOREACH (const CSubNet& subnet, rpc_allow_subnets)
+    for (const auto& subnet : rpc_allow_subnets)
         strAllowed += subnet.ToString() + " ";
     LogPrint("http", "Allowing HTTP connections from: %s\n", strAllowed);
     return true;
@@ -420,7 +422,7 @@ bool InitHTTPServer()
     }
 
     evhttp_set_timeout(http, GetArg("-rpcservertimeout", DEFAULT_HTTP_SERVER_TIMEOUT));
-    evhttp_set_max_body_size(http, MAX_SIZE);
+    evhttp_set_max_body_size(http, MAX_DATA_SIZE);
     evhttp_set_gencb(http, http_request_cb, NULL);
 
     if (!HTTPBindAddresses(http)) {
@@ -461,9 +463,8 @@ void InterruptHTTPServer()
     LogPrint("http", "Interrupting HTTP server\n");
     if (eventHTTP) {
         // Unlisten sockets
-        BOOST_FOREACH (evhttp_bound_socket *socket, boundSockets) {
+        for (auto socket : boundSockets)
             evhttp_del_accept_socket(eventHTTP, socket);
-        }
         // Reject requests on current connections
         evhttp_set_gencb(eventHTTP, http_reject_request_cb, NULL);
     }
@@ -606,7 +607,7 @@ void HTTPRequest::WriteReply(int nStatus, const std::string& strReply)
     ev->trigger(0);
     replySent = true;
     req = 0; // transferred back to main thread
-}
+} //-V773 : ev will be release by the callback function httpevent_callback_fn later, so this PVS warning is a false warning
 
 CService HTTPRequest::GetPeer()
 {

@@ -1,7 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2014 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// file COPYING or https://www.opensource.org/licenses/mit-license.php.
 
 #include "miner.h"
 #ifdef ENABLE_MINING
@@ -35,12 +35,12 @@
 #include "sodium.h"
 
 #include <boost/thread.hpp>
-#include <boost/tuple/tuple.hpp>
+#include <tuple>
 #ifdef ENABLE_MINING
 #include <functional>
 #endif
 #include <mutex>
- #include "mnode-validation.h"
+#include "mnode/mnode-validation.h"
 
 using namespace std;
 
@@ -74,7 +74,7 @@ uint64_t nLastBlockTx = 0;
 uint64_t nLastBlockSize = 0;
 
 // We want to sort transactions by priority and fee rate, so:
-typedef boost::tuple<double, CFeeRate, const CTransaction*> TxPriority;
+typedef std::tuple<double, CFeeRate, const CTransaction*> TxPriority;
 class TxPriorityCompare
 {
     bool byFee;
@@ -86,15 +86,15 @@ public:
     {
         if (byFee)
         {
-            if (a.get<1>() == b.get<1>())
-                return a.get<0>() < b.get<0>();
-            return a.get<1>() < b.get<1>();
+            if (std::get<1>(a) == std::get<1>(b))
+                return std::get<0>(a) < std::get<0>(b);
+            return std::get<1>(a) < std::get<1>(b);
         }
         else
         {
-            if (a.get<0>() == b.get<0>())
-                return a.get<1>() < b.get<1>();
-            return a.get<0>() < b.get<0>();
+            if (std::get<0>(a) == std::get<0>(b))
+                return std::get<1>(a) < std::get<1>(b);
+            return std::get<0>(a) < std::get<0>(b);
         }
     }
 };
@@ -104,7 +104,7 @@ void UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, 
     pblock->nTime = std::max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
 
     // Updating time can change work required on testnet:
-    if (consensusParams.nPowAllowMinDifficultyBlocksAfterHeight != boost::none) {
+    if (consensusParams.nPowAllowMinDifficultyBlocksAfterHeight != std::nullopt) {
         pblock->nBits = GetNextWorkRequired(pindexPrev, pblock, consensusParams);
     }
 }
@@ -115,7 +115,7 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn)
     // Create new block
     std::unique_ptr<CBlockTemplate> pblocktemplate(new CBlockTemplate());
     if(!pblocktemplate.get())
-        return NULL;
+        return nullptr;
     CBlock *pblock = &pblocktemplate->block; // pointer for convenience
 
     // -regtest only: allow overriding block.nVersion with
@@ -178,11 +178,11 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn)
             if (tx.IsCoinBase() || !IsFinalTx(tx, nHeight, nLockTimeCutoff) || IsExpiredTx(tx, nHeight))
                 continue;
 
-            COrphan* porphan = NULL;
+            COrphan* porphan = nullptr;
             double dPriority = 0;
             CAmount nTotalIn = 0;
             bool fMissingInputs = false;
-            BOOST_FOREACH(const CTxIn& txin, tx.vin)
+            for (const auto& txin : tx.vin)
             {
                 // Read prev transaction
                 if (!view.HaveCoins(txin.prevout.hash))
@@ -256,9 +256,9 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn)
         while (!vecPriority.empty())
         {
             // Take highest priority transaction off the priority queue:
-            double dPriority = vecPriority.front().get<0>();
-            CFeeRate feeRate = vecPriority.front().get<1>();
-            const CTransaction& tx = *(vecPriority.front().get<2>());
+            double dPriority = std::get<0>(vecPriority.front());
+            CFeeRate feeRate = std::get<1>(vecPriority.front());
+            const CTransaction& tx = *(std::get<2>(vecPriority.front()));
 
             std::pop_heap(vecPriority.begin(), vecPriority.end(), comparer);
             vecPriority.pop_back();
@@ -310,9 +310,8 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn)
 
             UpdateCoins(tx, view, nHeight);
 
-            BOOST_FOREACH(const OutputDescription &outDescription, tx.vShieldedOutput) {
+            for (const auto &outDescription : tx.vShieldedOutput)
                 sapling_tree.append(outDescription.cm);
-            }
 
             // Added
             pblock->vtx.push_back(tx);
@@ -332,7 +331,7 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn)
             // Add transactions that depend on this one to the priority queue
             if (mapDependers.count(hash))
             {
-                BOOST_FOREACH(COrphan* porphan, mapDependers[hash])
+                for (auto porphan : mapDependers[hash])
                 {
                     if (!porphan->setDependsOn.empty())
                     {
@@ -392,24 +391,25 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn)
 }
 
 #ifdef ENABLE_WALLET
-boost::optional<CScript> GetMinerScriptPubKey(CReserveKey& reservekey)
+std::optional<CScript> GetMinerScriptPubKey(CReserveKey& reservekey)
 #else
-boost::optional<CScript> GetMinerScriptPubKey()
+std::optional<CScript> GetMinerScriptPubKey()
 #endif
 {
+    KeyIO keyIO(Params());
     CKeyID keyID;
-    CTxDestination addr = DecodeDestination(GetArg("-mineraddress", ""));
+    CTxDestination addr = keyIO.DecodeDestination(GetArg("-mineraddress", ""));
     if (IsValidDestination(addr)) {
-        keyID = boost::get<CKeyID>(addr);
+        keyID = std::get<CKeyID>(addr);
     } else {
 #ifdef ENABLE_WALLET
         CPubKey pubkey;
         if (!reservekey.GetReservedKey(pubkey)) {
-            return boost::optional<CScript>();
+            return std::optional<CScript>();
         }
         keyID = pubkey.GetID();
 #else
-        return boost::optional<CScript>();
+        return std::optional<CScript>();
 #endif
     }
 
@@ -420,16 +420,15 @@ boost::optional<CScript> GetMinerScriptPubKey()
 #ifdef ENABLE_WALLET
 CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey)
 {
-    boost::optional<CScript> scriptPubKey = GetMinerScriptPubKey(reservekey);
+    std::optional<CScript> scriptPubKey = GetMinerScriptPubKey(reservekey);
 #else
 CBlockTemplate* CreateNewBlockWithKey()
 {
-    boost::optional<CScript> scriptPubKey = GetMinerScriptPubKey();
+    std::optional<CScript> scriptPubKey = GetMinerScriptPubKey();
 #endif
 
-    if (!scriptPubKey) {
-        return NULL;
-    }
+    if (!scriptPubKey)
+        return nullptr;
     return CreateNewBlock(*scriptPubKey);
 }
 
@@ -490,7 +489,7 @@ static bool ProcessBlockFound(CBlock* pblock)
 
     // Process this block the same as if we had received it from another node
     CValidationState state;
-    if (!ProcessNewBlock(state, NULL, pblock, true, NULL))
+    if (!ProcessNewBlock(state, nullptr, pblock, true, nullptr))
         return error("PastelMiner: ProcessNewBlock, block not accepted");
 
     TrackMinedBlock(pblock->GetHash());
@@ -731,7 +730,7 @@ void static BitcoinMiner()
                 // Update nNonce and nTime
                 pblock->nNonce = ArithToUint256(UintToArith256(pblock->nNonce) + 1);
                 UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
-                if (chainparams.GetConsensus().nPowAllowMinDifficultyBlocksAfterHeight != boost::none)
+                if (chainparams.GetConsensus().nPowAllowMinDifficultyBlocksAfterHeight != std::nullopt)
                 {
                     // Changing pblock->nTime can change work required on testnet:
                     hashTarget.SetCompact(pblock->nBits);
@@ -763,17 +762,17 @@ void GenerateBitcoins(bool fGenerate, CWallet* pwallet, int nThreads)
 void GenerateBitcoins(bool fGenerate, int nThreads)
 #endif
 {
-    static boost::thread_group* minerThreads = NULL;
+    static boost::thread_group* minerThreads = nullptr;
 
     if (nThreads < 0)
         nThreads = GetNumCores();
 
-    if (minerThreads != NULL)
+    if (minerThreads != nullptr)
     {
         minerThreads->interrupt_all();
         minerThreads->join_all();
         delete minerThreads;
-        minerThreads = NULL;
+        minerThreads = nullptr;
     }
 
     if (nThreads == 0 || !fGenerate)

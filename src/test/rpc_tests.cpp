@@ -7,6 +7,7 @@
 
 #include "key_io.h"
 #include "netbase.h"
+#include "main.h"
 #include "utilstrencodings.h"
 
 #include "test/test_bitcoin.h"
@@ -346,4 +347,42 @@ BOOST_AUTO_TEST_CASE(rpc_getnetworksolps)
     BOOST_CHECK_NO_THROW(CallRPC("getnetworksolps 120 -1"));
 }
 
+void CheckRPCThrows(std::string rpcString, std::string expectedErrorMessage) {
+    try {
+        CallRPC(rpcString);
+        // Note: CallRPC catches (const UniValue& objError) and rethrows a runtime_error
+        BOOST_FAIL("Should have caused an error");
+    } catch (const std::runtime_error& e) {
+        BOOST_CHECK_EQUAL(expectedErrorMessage, e.what());
+    } catch(const std::exception& e) {
+        BOOST_FAIL(std::string("Unexpected exception: ") + typeid(e).name() + ", message=\"" + e.what() + "\"");
+    }
+}
+
+// Test parameter processing (not functionality)
+BOOST_AUTO_TEST_CASE(rpc_insightexplorer)
+{
+    CheckRPCThrows("getblockdeltas \"a\"",
+        "Error: getblockdeltas is disabled. "
+        "Run './pastel-cli help getblockdeltas' for instructions on how to enable this feature.");
+
+    CheckRPCThrows("getaddressmempool \"a\"",
+        "Error: getaddressmempool is disabled. "
+        "Run './pastel-cli help getaddressmempool' for instructions on how to enable this feature.");
+
+    fExperimentalMode = true;
+    fInsightExplorer = true;
+
+    std::string addr = "PthhsEaVCV8WZHw5eoyufm8pQhT8iQdKJPi";
+
+    BOOST_CHECK_NO_THROW(CallRPC("getaddressmempool \"" + addr + "\""));
+    BOOST_CHECK_NO_THROW(CallRPC("getaddressmempool {\"addresses\":[\"" + addr + "\"]}"));
+    BOOST_CHECK_NO_THROW(CallRPC("getaddressmempool {\"addresses\":[\"" + addr + "\",\"" + addr + "\"]}")); 
+
+    CheckRPCThrows("getblockdeltas \"00040fe8ec8471911baa1db1266ea15dd06b4a8a5c453883c000b031973dce08\"",
+        "Block not found");
+    // revert
+    fExperimentalMode = false;
+    fInsightExplorer = false;
+}
 BOOST_AUTO_TEST_SUITE_END()

@@ -1,20 +1,16 @@
+#pragma once
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2014 The Bitcoin Core developers
+// Copyright (c) 2018-2021 Pastel Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
-
-#ifndef BITCOIN_CHAIN_H
-#define BITCOIN_CHAIN_H
 
 #include "arith_uint256.h"
 #include "primitives/block.h"
 #include "pow.h"
 #include "tinyformat.h"
 #include "uint256.h"
-
 #include <vector>
-
-#include <boost/foreach.hpp>
 
 static const int SPROUT_VALUE_VERSION = 1001400;
 static const int SAPLING_VALUE_VERSION = 1010100;
@@ -26,8 +22,9 @@ struct CDiskBlockPos
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         READWRITE(VARINT(nFile));
         READWRITE(VARINT(nPos));
     }
@@ -150,7 +147,7 @@ public:
     //! Branch ID corresponding to the consensus rules used to validate this block.
     //! Only cached if block validity is BLOCK_VALID_CONSENSUS.
     //! Persisted at each activation height, memory-only for intervening blocks.
-    boost::optional<uint32_t> nCachedBranchId;
+    std::optional<uint32_t> nCachedBranchId;
 
     //! The anchor for the tree state up to the start of this block
     uint256 hashSproutAnchor;
@@ -159,27 +156,35 @@ public:
     uint256 hashFinalSproutRoot;
 
     //! Change in value held by the Sprout circuit over this block.
-    //! Will be boost::none for older blocks on old nodes until a reindex has taken place.
-    boost::optional<CAmount> nSproutValue;
+    //! Will be std::nullopt for older blocks on old nodes until a reindex has taken place.
+    std::optional<CAmount> nSproutValue;
 
     //! (memory only) Total value held by the Sprout circuit up to and including this block.
-    //! Will be boost::none for on old nodes until a reindex has taken place.
-    //! Will be boost::none if nChainTx is zero.
-    boost::optional<CAmount> nChainSproutValue;
+    //! Will be std::nullopt for on old nodes until a reindex has taken place.
+    //! Will be std::nullopt if nChainTx is zero.
+    std::optional<CAmount> nChainSproutValue;
 
     //! Change in value held by the Sapling circuit over this block.
-    //! Not a boost::optional because this was added before Sapling activated, so we can
+    //! Not a std::optional because this was added before Sapling activated, so we can
     //! rely on the invariant that every block before this was added had nSaplingValue = 0.
     CAmount nSaplingValue;
 
     //! (memory only) Total value held by the Sapling circuit up to and including this block.
-    //! Will be boost::none if nChainTx is zero.
-    boost::optional<CAmount> nChainSaplingValue;
+    //! Will be std::nullopt if nChainTx is zero.
+    std::optional<CAmount> nChainSaplingValue;
+
+    //! Root of the Sapling commitment tree as of the end of this block.
+    //!
+    //! - For blocks prior to (not including) the Heartwood activation block, this is
+    //!   always equal to hashLightClientRoot.
+    //! - For blocks including and after the Heartwood activation block, this is only set
+    //!   once a block has been connected to the main chain, and will be null otherwise.
+    uint256 hashFinalSaplingRoot;
 
     //! block header
     int nVersion;
     uint256 hashMerkleRoot;
-    uint256 hashFinalSaplingRoot;
+
     unsigned int nTime;
     unsigned int nBits;
     uint256 nNonce;
@@ -201,14 +206,14 @@ public:
         nTx = 0;
         nChainTx = 0;
         nStatus = 0;
-        nCachedBranchId = boost::none;
+        nCachedBranchId = std::nullopt;
         hashSproutAnchor = uint256();
         hashFinalSproutRoot = uint256();
         nSequenceId = 0;
-        nSproutValue = boost::none;
-        nChainSproutValue = boost::none;
+        nSproutValue = std::nullopt;
+        nChainSproutValue = std::nullopt;
         nSaplingValue = 0;
-        nChainSaplingValue = boost::none;
+        nChainSaplingValue = std::nullopt;
 
         nVersion       = 0;
         hashMerkleRoot = uint256();
@@ -351,8 +356,9 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         int nVersion = s.GetVersion();
         if (!(s.GetType() & SER_GETHASH))
             READWRITE(VARINT(nVersion));
@@ -367,7 +373,8 @@ public:
         if (nStatus & BLOCK_HAVE_UNDO)
             READWRITE(VARINT(nUndoPos));
         if (nStatus & BLOCK_ACTIVATES_UPGRADE) {
-            if (ser_action.ForRead()) {
+            if (ser_action == SERIALIZE_ACTION::Read)
+            {
                 uint32_t branchId;
                 READWRITE(branchId);
                 nCachedBranchId = branchId;
@@ -476,7 +483,7 @@ public:
 
     /** Return the maximal height in the chain. Is equal to chain.Tip() ? chain.Tip()->nHeight : -1. */
     int Height() const {
-        return vChain.size() - 1;
+        return int(vChain.size()) - 1;
     }
 
     /** Set/initialize a chain with a given tip. */
@@ -488,5 +495,3 @@ public:
     /** Find the last common block between this chain and a block index entry. */
     const CBlockIndex *FindFork(const CBlockIndex *pindex) const;
 };
-
-#endif // BITCOIN_CHAIN_H

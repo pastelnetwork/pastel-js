@@ -16,6 +16,7 @@ include_directories(
 set(UNIVALUE_INCLUDE "src/univalue/include")
 add_library(univalue 
     src/univalue/lib/univalue.cpp
+    src/univalue/lib/univalue_get.cpp
     src/univalue/lib/univalue_read.cpp
     src/univalue/lib/univalue_write.cpp
 )
@@ -76,7 +77,7 @@ target_compile_definitions(leveldb PUBLIC ${LEVEL_DB_FLAGS})
 add_library(bitcoin_common
     src/amount.cpp
     src/arith_uint256.cpp
-    src/base58.cpp 
+    src/base58.cpp
     src/bech32.cpp
     src/chainparams.cpp
     src/coins.cpp
@@ -86,8 +87,8 @@ add_library(bitcoin_common
     src/core_write.cpp
     src/hash.cpp
     src/key.cpp
-    src/keystore.cpp
     src/key_io.cpp
+    src/keystore.cpp
     src/netbase.cpp
     src/primitives/block.cpp
     src/primitives/transaction.cpp
@@ -97,11 +98,9 @@ add_library(bitcoin_common
     src/script/interpreter.cpp
     src/script/script.cpp
     src/script/script_error.cpp
-    src/script/sigcache.cpp
     src/script/sign.cpp
     src/script/standard.cpp
     src/transaction_builder.cpp
-    src/uint256.cpp
     src/utiltest.cpp
 )
 target_include_directories(bitcoin_common PRIVATE src/univalue/include src/secp256k1/include ${LEVEL_DB_INCLUDE})
@@ -109,43 +108,45 @@ target_compile_definitions(bitcoin_common PUBLIC ${LEVEL_DB_FLAGS})
 
 # Pastel wallet
 add_library(bitcoin_wallet
-    src/utiltest.cpp
-    src/wallet/asyncrpcoperation_mergetoaddress.cpp
-    src/wallet/asyncrpcoperation_sendmany.cpp
-    src/wallet/asyncrpcoperation_shieldcoinbase.cpp
-    src/wallet/crypter.cpp
-    src/wallet/db.cpp
-    src/wallet/rpcdisclosure.cpp
-    src/wallet/rpcdump.cpp
-    src/wallet/rpcwallet.cpp
-    src/wallet/wallet.cpp
-    src/wallet/walletdb.cpp
-    src/wallet/wallet_ismine.cpp
-    src/zcbenchmarks.cpp
+    src/zcbenchmarks.cpp 
+    src/wallet/asyncrpcoperation_mergetoaddress.cpp 
+    src/wallet/asyncrpcoperation_sendmany.cpp 
+    src/wallet/asyncrpcoperation_shieldcoinbase.cpp 
+    src/wallet/crypter.cpp 
+    src/wallet/db.cpp 
+    src/wallet/paymentdisclosure.cpp 
+    src/wallet/paymentdisclosuredb.cpp 
+    src/wallet/rpcdisclosure.cpp 
+    src/wallet/rpcdump.cpp 
+    src/wallet/rpcwallet.cpp 
+    src/wallet/wallet.cpp 
+    src/wallet/wallet_ismine.cpp 
+    src/wallet/walletdb.cpp 
 )
 target_include_directories(bitcoin_wallet PRIVATE src/univalue/include ${LEVEL_DB_INCLUDE})
 target_compile_definitions(bitcoin_wallet PUBLIC ${LEVEL_DB_FLAGS})
 
 # Pastel util
 add_library(bitcoin_util
-    src/chainparamsbase.cpp
-    src/clientversion.cpp
-    src/compat/glibcxx_sanity.cpp
-    src/compat/glibc_compat.cpp
-    src/compat/glibc_sanity.cpp
-    src/random.cpp
-    src/rpc/client.cpp
-    src/rpc/protocol.cpp
-    src/support/cleanse.cpp
-    src/support/pagelocker.cpp
-    src/sync.cpp
-    src/util.cpp
-    src/utilmoneystr.cpp
-    src/utilstrencodings.cpp
-    src/utiltime.cpp
+    src/support/lockedpool.cpp 
+    src/chainparamsbase.cpp 
+    src/clientversion.cpp 
+    src/compat/glibc_sanity.cpp 
+    src/compat/glibcxx_sanity.cpp 
+    src/compat/strnlen.cpp 
+    src/random.cpp 
+    src/rpc/protocol.cpp 
+    src/support/cleanse.cpp 
+    src/sync.cpp 
+    src/uint256.cpp 
+    src/util.cpp 
+    src/utilmoneystr.cpp 
+    src/ascii85.cpp 
+    src/utilstrencodings.cpp 
+    src/utiltime.cpp 
 )
 target_include_directories(bitcoin_util PRIVATE src/univalue/include)
-target_compile_definitions(bitcoin_util PUBLIC SODIUM_STATIC)
+target_compile_definitions(bitcoin_util PUBLIC SODIUM_STATIC HAVE_ENDIAN_H)
 
 # Pastel crypto
 add_library(bitcoin_crypto
@@ -158,9 +159,16 @@ add_library(bitcoin_crypto
     src/crypto/sha512.cpp
 )
 
+# Pastel cli
+add_library(bitcoin_cli
+    src/rpc/client.cpp
+)
+target_include_directories(bitcoin_cli PRIVATE src/univalue/include)
+
 set(BITCOIN_SERVER_FLAGS "ENABLE_WALLET")
 # Pastel server
 add_library(bitcoin_server
+    src/sendalert.cpp
     src/addrman.cpp
     src/alert.cpp
     src/asyncrpcoperation.cpp
@@ -168,19 +176,17 @@ add_library(bitcoin_server
     src/bloom.cpp
     src/chain.cpp
     src/checkpoints.cpp
-    src/dbwrapper.cpp
     src/deprecation.cpp
     src/httprpc.cpp
     src/httpserver.cpp
     src/init.cpp
+    src/dbwrapper.cpp
     src/main.cpp
     src/merkleblock.cpp
     src/metrics.cpp
     src/miner.cpp
     src/net.cpp
     src/noui.cpp
-    src/paymentdisclosure.cpp
-    src/paymentdisclosuredb.cpp
     src/policy/fees.cpp
     src/pow.cpp
     src/rest.cpp
@@ -190,12 +196,28 @@ add_library(bitcoin_server
     src/rpc/net.cpp
     src/rpc/rawtransaction.cpp
     src/rpc/server.cpp
-    src/sendalert.cpp
+    src/script/sigcache.cpp
     src/timedata.cpp
     src/torcontrol.cpp
     src/txdb.cpp
     src/txmempool.cpp
     src/validationinterface.cpp
+    src/mnode/mnode-config.cpp
+    src/mnode/mnode-active.cpp
+    src/mnode/mnode-manager.cpp
+    src/mnode/mnode-masternode.cpp
+    src/mnode/mnode-msgsigner.cpp
+    src/mnode/mnode-requesttracker.cpp
+    src/mnode/mnode-sync.cpp
+    src/mnode/mnode-rpc.cpp
+    src/mnode/mnode-validation.cpp
+    src/mnode/mnode-payments.cpp
+    src/mnode/mnode-governance.cpp
+    src/mnode/mnode-messageproc.cpp
+    src/mnode/mnode-pastel.cpp
+    src/mnode/ticket-processor.cpp
+    src/mnode/mnode-notificationinterface.cpp
+    src/mnode/mnode-controller.cpp
 )
 target_include_directories(bitcoin_server PRIVATE src/univalue/include ${LEVEL_DB_INCLUDE} src/leveldb/helpers/memenv src/secp256k1/include src/snark)
 target_compile_definitions(bitcoin_server PUBLIC ${LEVEL_DB_FLAGS} ${BITCOIN_SERVER_FLAGS})
@@ -229,50 +251,36 @@ add_library(snark
     src/snark/libsnark/common/utils.cpp
     src/snark/libsnark/gadgetlib1/constraint_profiling.cpp
 )
-target_include_directories(snark PRIVATE ${SNARK_INCLUDE} src/snark)
+target_include_directories(snark PRIVATE ${SNARK_INCLUDE} src/snark )
 target_compile_definitions(snark PUBLIC ${SNARK_FLAGS})
 
 set(ZCASH_FLAGS "BOOST_SPIRIT_THREADSAFE" "STATIC")
 add_library(zcash
-    src/zcash/Address.cpp
     src/zcash/IncrementalMerkleTree.cpp
-    src/zcash/JoinSplit.cpp
-    src/zcash/Note.cpp
     src/zcash/NoteEncryption.cpp
-    src/zcash/prf.cpp
+    src/zcash/Address.cpp
+    src/zcash/address/sapling.cpp
+    src/zcash/address/sprout.cpp
+    src/zcash/address/zip32.cpp
+    src/zcash/JoinSplit.cpp
     src/zcash/Proof.cpp
+    src/zcash/Note.cpp
+    src/zcash/prf.cpp
     src/zcash/util.cpp
-    src/zcash/zip32.cpp
 )
 target_include_directories(zcash PRIVATE ${SNARK_INCLUDE})
 target_compile_definitions(zcash PUBLIC SODIUM_STATIC ${ZCASH_FLAGS} ${SNARK_FLAGS})
 
 set(PASTELD_FLAGS "ENABLE_WALLET")
-set(PASTELD_EMCC_FLAGS "--bind -s ALLOW_MEMORY_GROWTH=1 -s WASM=1 -s EXIT_RUNTIME=0 -s INVOKE_RUN=0 -s MODULARIZE=1 -s FETCH=1 -s EXPORT_NAME=Pastel -flto -O3")
+set(PASTELD_EMCC_FLAGS "--bind -s ALLOW_MEMORY_GROWTH=1 -s WASM=1 -s EXIT_RUNTIME=0 -s INVOKE_RUN=0 -s MODULARIZE=1 -s DISABLE_EXCEPTION_CATCHING=0 -s EXPORT_NAME=Pastel -O2")
 add_executable(pasteld
-    src/bitcoind.cpp
-    src/mnode-active.cpp
-    src/mnode-config.cpp
-    src/mnode-controller.cpp
-    src/mnode-db.cpp
-    src/mnode-dbcreate.cpp
-    src/mnode-governance.cpp
-    src/mnode-manager.cpp
-    src/mnode-masternode.cpp
-    src/mnode-messageproc.cpp
-    src/mnode-msgsigner.cpp
-    src/mnode-notificationinterface.cpp
-    src/mnode-pastel.cpp
-    src/mnode-payments.cpp
-    src/mnode-requesttracker.cpp
-    src/mnode-rpc.cpp
-    src/mnode-sync.cpp
-    src/mnode-validation.cpp
+    src/pasteld.cpp
     port/port.cpp
+    port/bind.cpp
 )
 target_include_directories(pasteld PRIVATE ${UNIVALUE_INCLUDE} ${LEVEL_DB_INCLUDE})
 target_compile_definitions(pasteld PUBLIC ${BITCOIN_ZMQ_FLAGS} ${PASTELD_FLAGS})
 target_link_directories(pasteld PRIVATE libs/)
-target_link_libraries(pasteld bitcoin_server bitcoin_wallet bitcoin_common bitcoin_util bitcoin_zmq bitcoin_crypto zcash snark secp256k1 leveldb univalue)
+target_link_libraries(pasteld bitcoin_server bitcoin_wallet bitcoin_common bitcoin_zmq bitcoin_crypto bitcoin_util bitcoin_cli zcash snark secp256k1 leveldb univalue)
 target_link_libraries(pasteld sodium rustzcash event event_core event_pthreads gmp gmpxx boost_thread boost_chrono boost_program_options boost_system boost_filesystem db_cxx db zmq ssl crypto)
 set_target_properties(pasteld PROPERTIES LINK_FLAGS ${PASTELD_EMCC_FLAGS})

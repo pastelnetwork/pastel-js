@@ -57,7 +57,7 @@ public:
         iterator& operator--() { ptr--; return *this; }
         iterator operator++(int) { iterator copy(*this); ++(*this); return copy; }
         iterator operator--(int) { iterator copy(*this); --(*this); return copy; }
-        difference_type friend operator-(iterator a, iterator b) { return (&(*a) - &(*b)); }
+        difference_type friend operator-(iterator a, iterator b) { return static_cast<difference_type>(&(*a) - &(*b)); }
         iterator operator+(size_type n) { return iterator(ptr + n); }
         iterator& operator+=(size_type n) { ptr += n; return *this; }
         iterator operator-(size_type n) { return iterator(ptr - n); }
@@ -108,7 +108,7 @@ public:
         const_iterator& operator--() { ptr--; return *this; }
         const_iterator operator++(int) { const_iterator copy(*this); ++(*this); return copy; }
         const_iterator operator--(int) { const_iterator copy(*this); --(*this); return copy; }
-        difference_type friend operator-(const_iterator a, const_iterator b) { return (&(*a) - &(*b)); }
+        difference_type friend operator-(const_iterator a, const_iterator b) { return static_cast<difference_type>(&(*a) - &(*b)); }
         const_iterator operator+(size_type n) { return const_iterator(ptr + n); }
         const_iterator& operator+=(size_type n) { ptr += n; return *this; }
         const_iterator operator-(size_type n) { return const_iterator(ptr - n); }
@@ -129,7 +129,7 @@ public:
         typedef const T* pointer;
         typedef const T& reference;
         typedef std::bidirectional_iterator_tag iterator_category;
-        const_reverse_iterator(T* ptr_) : ptr(ptr_) {}
+        const_reverse_iterator(const T* ptr_) : ptr(ptr_) {}
         const_reverse_iterator(reverse_iterator x) : ptr(&(*x)) {}
         const T& operator*() const { return *ptr; }
         const T* operator->() const { return ptr; }
@@ -189,7 +189,7 @@ private:
     }
 
     T* item_ptr(difference_type pos) { return is_direct() ? direct_ptr(pos) : indirect_ptr(pos); }
-    const T* item_ptr(difference_type pos) const { return is_direct() ? direct_ptr(pos) : indirect_ptr(pos); }
+    const T* item_ptr(const difference_type pos) const { return is_direct() ? direct_ptr(pos) : indirect_ptr(pos); }
 
 public:
     void assign(size_type n, const T& val) {
@@ -217,7 +217,7 @@ public:
         }
     }
 
-    prevector() : _size(0) {}
+    prevector() : _size(0), _union() {}
 
     explicit prevector(size_type n) : _size(0) {
         resize(n);
@@ -233,7 +233,7 @@ public:
 
     template<typename InputIterator>
     prevector(InputIterator first, InputIterator last) : _size(0) {
-        size_type n = last - first;
+        size_type n = static_cast<size_type>(std::distance(first, last));
         change_capacity(n);
         while (first != last) {
             _size++;
@@ -357,7 +357,7 @@ public:
     template<typename InputIterator>
     void insert(iterator pos, InputIterator first, InputIterator last) {
         size_type p = pos - begin();
-        difference_type count = last - first;
+        difference_type count = static_cast<difference_type>(last - first);
         size_type new_size = size() + count;
         if (capacity() < new_size) {
             change_capacity(new_size + (new_size >> 1));
@@ -433,7 +433,7 @@ public:
         clear();
         if (!is_direct()) {
             free(_union.indirect);
-            _union.indirect = NULL;
+            _union.indirect = nullptr;
         }
     }
 

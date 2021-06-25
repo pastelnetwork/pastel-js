@@ -39,17 +39,21 @@ class prevector_tester {
         BOOST_CHECK(pretype(real_vector.begin(), real_vector.end()) == pre_vector);
         BOOST_CHECK(pretype(pre_vector.begin(), pre_vector.end()) == pre_vector);
         size_t pos = 0;
-        BOOST_FOREACH(const T& v, pre_vector) {
+        for (const T& v : pre_vector)
+	{
              BOOST_CHECK(v == real_vector[pos++]);
         }
-        BOOST_REVERSE_FOREACH(const T& v, pre_vector) {
-             BOOST_CHECK(v == real_vector[--pos]);
+        for (auto it = pre_vector.rbegin(); it != pre_vector.rend(); ++it)
+	{
+             BOOST_CHECK(*it == real_vector[--pos]);
         }
-        BOOST_FOREACH(const T& v, const_pre_vector) {
+        for (const T& v : const_pre_vector)
+	{
              BOOST_CHECK(v == real_vector[pos++]);
         }
-        BOOST_REVERSE_FOREACH(const T& v, const_pre_vector) {
-             BOOST_CHECK(v == real_vector[--pos]);
+        for (auto it = const_pre_vector.rbegin(); it != const_pre_vector.rend(); ++it)
+	{
+             BOOST_CHECK(*it == real_vector[--pos]);
         }
         CDataStream ss1(SER_DISK, 0);
         CDataStream ss2(SER_DISK, 0);
@@ -204,10 +208,10 @@ BOOST_AUTO_TEST_CASE(PrevectorTestInt)
             if (test.size() > 0) {
                 test.update(insecure_rand() % test.size(), insecure_rand());
             }
-            if (((r >> 11) & 1024) == 11) {
+            if (((r >> 11) & 1024) == 11) { //-V547
                 test.clear();
             }
-            if (((r >> 21) & 512) == 12) {
+            if (((r >> 21) & 512) == 12) { //-V547
                 test.assign(insecure_rand() % 32, insecure_rand());
             }
         }

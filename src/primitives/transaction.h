@@ -1,11 +1,8 @@
+#pragma once
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2014 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
-
-#ifndef BITCOIN_PRIMITIVES_TRANSACTION_H
-#define BITCOIN_PRIMITIVES_TRANSACTION_H
-
 #include "amount.h"
 #include "random.h"
 #include "script/script.h"
@@ -15,8 +12,7 @@
 #include "consensus/consensus.h"
 
 #include <array>
-
-#include <boost/variant.hpp>
+#include <variant>
 
 #include "zcash/NoteEncryption.hpp"
 #include "zcash/Zcash.h"
@@ -56,8 +52,9 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         READWRITE(cv);
         READWRITE(anchor);
         READWRITE(nullifier);
@@ -101,8 +98,9 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         READWRITE(cv);
         READWRITE(cm);
         READWRITE(ephemeralKey);
@@ -130,7 +128,7 @@ public:
 };
 
 template <typename Stream>
-class SproutProofSerializer : public boost::static_visitor<>
+class SproutProofSerializer
 {
     Stream& s;
     bool useGroth;
@@ -156,23 +154,27 @@ public:
 };
 
 template<typename Stream, typename T>
-inline void SerReadWriteSproutProof(Stream& s, const T& proof, bool useGroth, CSerActionSerialize ser_action)
+inline void SerReadWriteSproutProof(Stream& s, T& proof, bool useGroth, const SERIALIZE_ACTION ser_action)
 {
-    auto ps = SproutProofSerializer<Stream>(s, useGroth);
-    boost::apply_visitor(ps, proof);
-}
-
-template<typename Stream, typename T>
-inline void SerReadWriteSproutProof(Stream& s, T& proof, bool useGroth, CSerActionUnserialize ser_action)
-{
-    if (useGroth) {
-        libzcash::GrothProof grothProof;
-        ::Unserialize(s, grothProof);
-        proof = grothProof;
-    } else {
-        libzcash::PHGRProof pghrProof;
-        ::Unserialize(s, pghrProof);
-        proof = pghrProof;
+    if (ser_action == SERIALIZE_ACTION::Write)
+    {
+        auto ps = SproutProofSerializer<Stream>(s, useGroth);
+        std::visit(ps, proof);
+    }
+    else
+    {
+        if (useGroth)
+        {
+            libzcash::GrothProof grothProof;
+            ::Unserialize(s, grothProof);
+            proof = grothProof;
+        }
+        else
+        {
+            libzcash::PHGRProof pghrProof;
+            ::Unserialize(s, pghrProof);
+            proof = pghrProof;
+        }
     }
 }
 
@@ -267,8 +269,9 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         // nVersion is set by CTransaction and CMutableTransaction to
         // (tx.fOverwintered << 31) | tx.nVersion
         bool fOverwintered = s.GetVersion() >> 31;
@@ -320,8 +323,9 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         READWRITE(hash);
         READWRITE(n);
     }
@@ -361,7 +365,7 @@ class SaplingOutPoint : public BaseOutPoint
 {
 public:
     SaplingOutPoint() : BaseOutPoint() {};
-    SaplingOutPoint(uint256 hashIn, uint32_t nIn) : BaseOutPoint(hashIn, nIn) {}; 
+    SaplingOutPoint(uint256 hashIn, uint32_t nIn) : BaseOutPoint(hashIn, nIn) {};
     std::string ToString() const;
 };
 
@@ -374,6 +378,8 @@ class CTxIn
 public:
     COutPoint prevout;
     CScript scriptSig;
+    // The only use of nSequence (via IsFinal) is in TransactionSignatureChecker::CheckLockTime
+    // It disables the nLockTime feature when set to maxint.
     uint32_t nSequence;
 
     CTxIn()
@@ -386,8 +392,8 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action) {
         READWRITE(prevout);
         READWRITE(*(CScriptBase*)(&scriptSig));
         READWRITE(nSequence);
@@ -436,8 +442,9 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         READWRITE(nValue);
         READWRITE(*(CScriptBase*)(&scriptPubKey));
     }
@@ -577,10 +584,13 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         uint32_t header;
-        if (ser_action.ForRead()) {
+        const bool bRead = ser_action == SERIALIZE_ACTION::Read;
+        if (bRead)
+        {
             // When deserializing, unpack the 4 byte header to extract fOverwintered and nVersion.
             READWRITE(header);
             *const_cast<bool*>(&fOverwintered) = header >> 31;
@@ -597,6 +607,7 @@ public:
             fOverwintered &&
             nVersionGroupId == OVERWINTER_VERSION_GROUP_ID &&
             nVersion == OVERWINTER_TX_VERSION;
+
         bool isSaplingV4 =
             fOverwintered &&
             nVersionGroupId == SAPLING_VERSION_GROUP_ID &&
@@ -627,7 +638,7 @@ public:
         if (isSaplingV4 && !(vShieldedSpend.empty() && vShieldedOutput.empty())) {
             READWRITE(*const_cast<binding_sig_t*>(&bindingSig));
         }
-        if (ser_action.ForRead())
+        if (bRead)
             UpdateHash();
     }
 
@@ -718,10 +729,12 @@ struct CMutableTransaction
 
     ADD_SERIALIZE_METHODS;
 
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    template <typename Stream>
+    inline void SerializationOp(Stream& s, const SERIALIZE_ACTION ser_action)
+    {
         uint32_t header;
-        if (ser_action.ForRead()) {
+        if (ser_action == SERIALIZE_ACTION::Read)
+        {
             // When deserializing, unpack the 4 byte header to extract fOverwintered and nVersion.
             READWRITE(header);
             fOverwintered = header >> 31;
@@ -787,5 +800,3 @@ struct CMutableTransaction
      */
     uint256 GetHash() const;
 };
-
-#endif // BITCOIN_PRIMITIVES_TRANSACTION_H

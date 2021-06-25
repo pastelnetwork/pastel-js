@@ -1,11 +1,10 @@
 #include <gtest/gtest.h>
 
+#include "fs.h"
 #include "zcash/Address.hpp"
 #include "wallet/wallet.h"
 #include "wallet/walletdb.h"
 #include "util.h"
-
-#include <boost/filesystem.hpp>
 
 /**
  * This test covers Sapling methods on CWallet
@@ -16,10 +15,12 @@
  * LoadSaplingIncomingViewingKey()
  * LoadSaplingZKeyMetadata()
  */
-TEST(wallet_zkeys_tests, StoreAndLoadSaplingZkeys) {
+TEST(wallet_zkeys_tests, StoreAndLoadSaplingZkeys)
+{
     SelectParams(CBaseChainParams::Network::MAIN);
 
     CWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     // wallet should be empty
     std::set<libzcash::SaplingPaymentAddress> addrs;
@@ -47,15 +48,15 @@ TEST(wallet_zkeys_tests, StoreAndLoadSaplingZkeys) {
     // manually add new spending key to wallet
     auto m = libzcash::SaplingExtendedSpendingKey::Master(seed);
     auto sk = m.Derive(0);
-    ASSERT_TRUE(wallet.AddSaplingZKey(sk, sk.DefaultAddress()));
+    ASSERT_TRUE(wallet.AddSaplingZKey(sk));
 
     // verify wallet did add it
-    auto fvk = sk.expsk.full_viewing_key();
-    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(fvk));
+    auto extfvk = sk.ToXFVK();
+    ASSERT_TRUE(wallet.HaveSaplingSpendingKey(extfvk));
 
     // verify spending key stored correctly
     libzcash::SaplingExtendedSpendingKey keyOut;
-    wallet.GetSaplingSpendingKey(fvk, keyOut);
+    wallet.GetSaplingSpendingKey(extfvk, keyOut);
     ASSERT_EQ(sk, keyOut);
 
     // verify there are two keys
@@ -68,14 +69,14 @@ TEST(wallet_zkeys_tests, StoreAndLoadSaplingZkeys) {
     // If we can't get an early diversified address, we are very unlucky
     blob88 diversifier;
     diversifier.begin()[0] = 10;
-    auto dpa = sk.ToXFVK().Address(diversifier).get().second;
+    auto dpa = sk.ToXFVK().Address(diversifier).value().second;
 
     // verify wallet only has the default address
     EXPECT_TRUE(wallet.HaveSaplingIncomingViewingKey(sk.DefaultAddress()));
     EXPECT_FALSE(wallet.HaveSaplingIncomingViewingKey(dpa));
 
     // manually add a diversified address
-    auto ivk = fvk.in_viewing_key();
+    auto ivk = extfvk.fvk.in_viewing_key();
     EXPECT_TRUE(wallet.AddSaplingIncomingViewingKey(ivk, dpa));
 
     // verify wallet did add it
@@ -96,7 +97,7 @@ TEST(wallet_zkeys_tests, StoreAndLoadSaplingZkeys) {
     ASSERT_EQ(wallet.mapSaplingZKeyMetadata[ivk2].nCreateTime, now);
 
     // Load a diversified address for the third key into the wallet
-    auto dpa2 = sk2.ToXFVK().Address(diversifier).get().second;
+    auto dpa2 = sk2.ToXFVK().Address(diversifier).value().second;
     EXPECT_TRUE(wallet.HaveSaplingIncomingViewingKey(sk2.DefaultAddress()));
     EXPECT_FALSE(wallet.HaveSaplingIncomingViewingKey(dpa2));
     EXPECT_TRUE(wallet.LoadSaplingPaymentAddress(dpa2, ivk2));
@@ -110,10 +111,12 @@ TEST(wallet_zkeys_tests, StoreAndLoadSaplingZkeys) {
  * LoadZKey()
  * LoadZKeyMetadata()
  */
-TEST(wallet_zkeys_tests, store_and_load_zkeys) {
+TEST(wallet_zkeys_tests, store_and_load_zkeys)
+{
     SelectParams(CBaseChainParams::Network::MAIN);
 
     CWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     // wallet should be empty
     std::set<libzcash::SproutPaymentAddress> addrs;
@@ -167,10 +170,12 @@ TEST(wallet_zkeys_tests, store_and_load_zkeys) {
  * RemoveSproutViewingKey()
  * LoadSproutViewingKey()
  */
-TEST(wallet_zkeys_tests, StoreAndLoadViewingKeys) {
+TEST(wallet_zkeys_tests, StoreAndLoadViewingKeys)
+{
     SelectParams(CBaseChainParams::Network::MAIN);
 
     CWallet wallet;
+    LOCK(wallet.cs_wallet);
 
     // wallet should be empty
     std::set<libzcash::SproutPaymentAddress> addrs;
@@ -212,17 +217,19 @@ TEST(wallet_zkeys_tests, StoreAndLoadViewingKeys) {
  * This test covers methods on CWalletDB
  * WriteZKey()
  */
-TEST(wallet_zkeys_tests, write_zkey_direct_to_db) {
+TEST(wallet_zkeys_tests, write_zkey_direct_to_db)
+{
     SelectParams(CBaseChainParams::Network::TESTNET);
 
     // Get temporary and unique path for file.
     // Note: / operator to append paths
-    boost::filesystem::path pathTemp = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path();
-    boost::filesystem::create_directories(pathTemp);
+    fs::path pathTemp = fs::temp_directory_path() / fs::unique_path();
+    fs::create_directories(pathTemp);
     mapArgs["-datadir"] = pathTemp.string();
 
     bool fFirstRun;
     CWallet wallet("wallet.dat");
+    LOCK(wallet.cs_wallet);
     ASSERT_EQ(DB_LOAD_OK, wallet.LoadWallet(fFirstRun));
 
     // No default CPubKey set
@@ -284,17 +291,19 @@ TEST(wallet_zkeys_tests, write_zkey_direct_to_db) {
  * This test covers methods on CWalletDB
  * WriteSproutViewingKey()
  */
-TEST(wallet_zkeys_tests, WriteViewingKeyDirectToDB) {
+TEST(wallet_zkeys_tests, WriteViewingKeyDirectToDB)
+{
     SelectParams(CBaseChainParams::Network::TESTNET);
 
     // Get temporary and unique path for file.
     // Note: / operator to append paths
-    boost::filesystem::path pathTemp = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path();
-    boost::filesystem::create_directories(pathTemp);
+    fs::path pathTemp = fs::temp_directory_path() / fs::unique_path();
+    fs::create_directories(pathTemp);
     mapArgs["-datadir"] = pathTemp.string();
 
     bool fFirstRun;
     CWallet wallet("wallet-vkey.dat");
+    LOCK(wallet.cs_wallet);
     ASSERT_EQ(DB_LOAD_OK, wallet.LoadWallet(fFirstRun));
 
     // No default CPubKey set
@@ -329,17 +338,19 @@ TEST(wallet_zkeys_tests, WriteViewingKeyDirectToDB) {
 /**
  * This test covers methods on CWalletDB to load/save crypted z keys.
  */
-TEST(wallet_zkeys_tests, write_cryptedzkey_direct_to_db) {
+TEST(wallet_zkeys_tests, write_cryptedzkey_direct_to_db)
+{
     SelectParams(CBaseChainParams::Network::TESTNET);
 
     // Get temporary and unique path for file.
     // Note: / operator to append paths
-    boost::filesystem::path pathTemp = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path();
-    boost::filesystem::create_directories(pathTemp);
+    fs::path pathTemp = fs::temp_directory_path() / fs::unique_path();
+    fs::create_directories(pathTemp);
     mapArgs["-datadir"] = pathTemp.string();
 
     bool fFirstRun;
     CWallet wallet("wallet_crypted.dat");
+    LOCK(wallet.cs_wallet);
     ASSERT_EQ(DB_LOAD_OK, wallet.LoadWallet(fFirstRun));
 
     // No default CPubKey set
@@ -403,17 +414,19 @@ TEST(wallet_zkeys_tests, write_cryptedzkey_direct_to_db) {
 /**
  * This test covers methods on CWalletDB to load/save crypted sapling z keys.
  */
-TEST(wallet_zkeys_tests, WriteCryptedSaplingZkeyDirectToDb) {
+TEST(wallet_zkeys_tests, WriteCryptedSaplingZkeyDirectToDb)
+{
     SelectParams(CBaseChainParams::Network::TESTNET);
 
     // Get temporary and unique path for file.
     // Note: / operator to append paths
-    boost::filesystem::path pathTemp = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path();
-    boost::filesystem::create_directories(pathTemp);
+    fs::path pathTemp = fs::temp_directory_path() / fs::unique_path();
+    fs::create_directories(pathTemp);
     mapArgs["-datadir"] = pathTemp.string();
 
     bool fFirstRun;
     CWallet wallet("wallet_crypted_sapling.dat");
+    LOCK(wallet.cs_wallet);
     ASSERT_EQ(DB_LOAD_OK, wallet.LoadWallet(fFirstRun));
 
      // No default CPubKey set
@@ -440,7 +453,7 @@ TEST(wallet_zkeys_tests, WriteCryptedSaplingZkeyDirectToDb) {
     EXPECT_TRUE(wallet.GetSaplingExtendedSpendingKey(address, extsk));
     blob88 diversifier;
     diversifier.begin()[0] = 10;
-    auto dpa = extsk.ToXFVK().Address(diversifier).get().second;
+    auto dpa = extsk.ToXFVK().Address(diversifier).value().second;
 
     // Add diversified address to the wallet
     auto ivk = extsk.expsk.full_viewing_key().in_viewing_key();

@@ -20,7 +20,7 @@ using namespace std;
 
 CTxMemPoolEntry::CTxMemPoolEntry():
     nFee(0), nTxSize(0), nModSize(0), nUsageSize(0), nTime(0), dPriority(0.0),
-    hadNoDependencies(false), spendsCoinbase(false)
+    hadNoDependencies(false), spendsCoinbase(false), nBranchId(0)
 {
     nHeight = MEMPOOL_HEIGHT;
 }
@@ -54,12 +54,17 @@ CTxMemPoolEntry::GetPriority(unsigned int currentHeight) const
 }
 
 CTxMemPool::CTxMemPool(const CFeeRate& _minRelayFee) :
-    nTransactionsUpdated(0)
+    nCheckFrequency(0), 
+    nTransactionsUpdated(0), 
+    minerPolicyEstimator(nullptr),
+    totalTxSize(0),
+    cachedInnerUsage(0),
+    mapSproutNullifiers(),
+    mapSaplingNullifiers()
 {
     // Sanity checks off by default for performance, because otherwise
     // accepting transactions becomes O(N^2) where N is the number
     // of transactions in the pool
-    nCheckFrequency = 0;
 
     minerPolicyEstimator = new CBlockPolicyEstimator(_minRelayFee);
 }
@@ -105,14 +110,13 @@ bool CTxMemPool::addUnchecked(const uint256& hash, const CTxMemPoolEntry &entry,
     const CTransaction& tx = mapTx.find(hash)->GetTx();
     for (unsigned int i = 0; i < tx.vin.size(); i++)
         mapNextTx[tx.vin[i].prevout] = CInPoint(&tx, i);
-    BOOST_FOREACH(const JSDescription &joinsplit, tx.vjoinsplit) {
-        BOOST_FOREACH(const uint256 &nf, joinsplit.nullifiers) {
+    for (const auto &joinsplit : tx.vjoinsplit)
+    {
+        for (const auto &nf : joinsplit.nullifiers)
             mapSproutNullifiers[nf] = &tx;
-        }
     }
-    for (const SpendDescription &spendDescription : tx.vShieldedSpend) {
+    for (const auto &spendDescription : tx.vShieldedSpend)
         mapSaplingNullifiers[spendDescription.nullifier] = &tx;
-    }
     nTransactionsUpdated++;
     totalTxSize += entry.GetTxSize();
     cachedInnerUsage += entry.DynamicMemoryUsage();
@@ -121,6 +125,30 @@ bool CTxMemPool::addUnchecked(const uint256& hash, const CTxMemPoolEntry &entry,
     return true;
 }
 
+void CTxMemPool::getAddressIndex(
+    const std::vector<std::pair<uint160, CScript::ScriptType>>& addresses,
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>>& results)
+{
+    LOCK(cs);
+    for (const auto& it : addresses) {
+        auto ait = mapAddress.lower_bound(CMempoolAddressDeltaKey(it.second, it.first));
+        while (ait != mapAddress.end() && (*ait).first.addressBytes == it.first && (*ait).first.type == it.second) {
+            results.push_back(*ait);
+            ait++;
+        }
+    }
+}
+
+bool CTxMemPool::getSpentIndex(const CSpentIndexKey &key, CSpentIndexValue &value)
+{
+    LOCK(cs);
+    auto it = mapSpent.find(key);
+    if (it != mapSpent.end()) {
+        value = it->second;
+        return true;
+    }
+    return false;
+}
 
 void CTxMemPool::remove(const CTransaction &origTx, std::list<CTransaction>& removed, bool fRecursive)
 {
@@ -156,12 +184,12 @@ void CTxMemPool::remove(const CTransaction &origTx, std::list<CTransaction>& rem
                     txToRemove.push_back(it->second.ptx->GetHash());
                 }
             }
-            BOOST_FOREACH(const CTxIn& txin, tx.vin)
+            for (const auto& txin : tx.vin)
                 mapNextTx.erase(txin.prevout);
-            BOOST_FOREACH(const JSDescription& joinsplit, tx.vjoinsplit) {
-                BOOST_FOREACH(const uint256& nf, joinsplit.nullifiers) {
+            for (const auto& joinsplit : tx.vjoinsplit)
+            {
+                for (const auto& nf : joinsplit.nullifiers)
                     mapSproutNullifiers.erase(nf);
-                }
             }
             for (const SpendDescription &spendDescription : tx.vShieldedSpend) {
                 mapSaplingNullifiers.erase(spendDescription.nullifier);
@@ -185,13 +213,17 @@ void CTxMemPool::removeForReorg(const CCoinsViewCache *pcoins, unsigned int nMem
         const CTransaction& tx = it->GetTx();
         if (!CheckFinalTx(tx, flags)) {
             transactionsToRemove.push_back(tx);
-        } else if (it->GetSpendsCoinbase()) {
-            BOOST_FOREACH(const CTxIn& txin, tx.vin) {
+        }
+        else if (it->GetSpendsCoinbase())
+        {
+            for (const auto& txin : tx.vin)
+            {
                 indexed_transaction_set::const_iterator it2 = mapTx.find(txin.prevout.hash);
                 if (it2 != mapTx.end())
                     continue;
                 const CCoins *coins = pcoins->AccessCoins(txin.prevout.hash);
-		if (nCheckFrequency != 0) assert(coins);
+		        if (nCheckFrequency != 0)
+                    assert(coins);
                 if (!coins || (coins->IsCoinBase() && ((signed long)nMemPoolHeight) - coins->nHeight < COINBASE_MATURITY)) {
                     transactionsToRemove.push_back(tx);
                     break;
@@ -199,7 +231,8 @@ void CTxMemPool::removeForReorg(const CCoinsViewCache *pcoins, unsigned int nMem
             }
         }
     }
-    BOOST_FOREACH(const CTransaction& tx, transactionsToRemove) {
+    for (const auto& tx : transactionsToRemove)
+    {
         list<CTransaction> removed;
         remove(tx, removed, true);
     }
@@ -219,7 +252,8 @@ void CTxMemPool::removeWithAnchor(const uint256 &invalidRoot, ShieldedType type)
         const CTransaction& tx = it->GetTx();
         switch (type) {
             case SPROUT:
-                BOOST_FOREACH(const JSDescription& joinsplit, tx.vjoinsplit) {
+                for (const auto& joinsplit : tx.vjoinsplit)
+                {
                     if (joinsplit.anchor == invalidRoot) {
                         transactionsToRemove.push_back(tx);
                         break;
@@ -227,7 +261,8 @@ void CTxMemPool::removeWithAnchor(const uint256 &invalidRoot, ShieldedType type)
                 }
             break;
             case SAPLING:
-                BOOST_FOREACH(const SpendDescription& spendDescription, tx.vShieldedSpend) {
+                for (const auto& spendDescription : tx.vShieldedSpend)
+                {
                     if (spendDescription.anchor == invalidRoot) {
                         transactionsToRemove.push_back(tx);
                         break;
@@ -240,7 +275,8 @@ void CTxMemPool::removeWithAnchor(const uint256 &invalidRoot, ShieldedType type)
         }
     }
 
-    BOOST_FOREACH(const CTransaction& tx, transactionsToRemove) {
+    for (const auto& tx : transactionsToRemove)
+    {
         list<CTransaction> removed;
         remove(tx, removed, true);
     }
@@ -251,7 +287,8 @@ void CTxMemPool::removeConflicts(const CTransaction &tx, std::list<CTransaction>
     // Remove transactions which depend on inputs of tx, recursively
     list<CTransaction> result;
     LOCK(cs);
-    BOOST_FOREACH(const CTxIn &txin, tx.vin) {
+    for (const auto &txin : tx.vin)
+    {
         std::map<COutPoint, CInPoint>::iterator it = mapNextTx.find(txin.prevout);
         if (it != mapNextTx.end()) {
             const CTransaction &txConflict = *it->second.ptx;
@@ -262,8 +299,10 @@ void CTxMemPool::removeConflicts(const CTransaction &tx, std::list<CTransaction>
         }
     }
 
-    BOOST_FOREACH(const JSDescription &joinsplit, tx.vjoinsplit) {
-        BOOST_FOREACH(const uint256 &nf, joinsplit.nullifiers) {
+    for (const auto &joinsplit : tx.vjoinsplit)
+    {
+        for (const auto &nf : joinsplit.nullifiers)
+        {
             std::map<uint256, const CTransaction*>::iterator it = mapSproutNullifiers.find(nf);
             if (it != mapSproutNullifiers.end()) {
                 const CTransaction &txConflict = *it->second;
@@ -311,7 +350,7 @@ void CTxMemPool::removeForBlock(const std::vector<CTransaction>& vtx, unsigned i
 {
     LOCK(cs);
     std::vector<CTxMemPoolEntry> entries;
-    BOOST_FOREACH(const CTransaction& tx, vtx)
+    for (const auto& tx : vtx)
     {
         uint256 hash = tx.GetHash();
 
@@ -319,7 +358,7 @@ void CTxMemPool::removeForBlock(const std::vector<CTransaction>& vtx, unsigned i
         if (i != mapTx.end())
             entries.push_back(*i);
     }
-    BOOST_FOREACH(const CTransaction& tx, vtx)
+    for (const auto& tx : vtx)
     {
         std::list<CTransaction> dummy;
         remove(tx, dummy, false);
@@ -386,7 +425,8 @@ void CTxMemPool::check(const CCoinsViewCache *pcoins) const
         innerUsage += it->DynamicMemoryUsage();
         const CTransaction& tx = it->GetTx();
         bool fDependsWait = false;
-        BOOST_FOREACH(const CTxIn &txin, tx.vin) {
+        for (const auto &txin : tx.vin)
+        {
             // Check that every mempool transaction's inputs refer to available coins, or other mempool tx's.
             indexed_transaction_set::const_iterator it2 = mapTx.find(txin.prevout.hash);
             if (it2 != mapTx.end()) {
@@ -407,8 +447,9 @@ void CTxMemPool::check(const CCoinsViewCache *pcoins) const
 
         unordered_map<uint256, SproutMerkleTree, CCoinsKeyHasher> intermediates;
 
-        BOOST_FOREACH(const JSDescription &joinsplit, tx.vjoinsplit) {
-            BOOST_FOREACH(const uint256 &nf, joinsplit.nullifiers) {
+        for (const auto &joinsplit : tx.vjoinsplit)
+        {
+            for (const auto &nf : joinsplit.nullifiers) {
                 assert(!pcoins->GetNullifier(nf, SPROUT));
             }
 
@@ -420,10 +461,8 @@ void CTxMemPool::check(const CCoinsViewCache *pcoins) const
                 assert(pcoins->GetSproutAnchorAt(joinsplit.anchor, tree));
             }
 
-            BOOST_FOREACH(const uint256& commitment, joinsplit.commitments)
-            {
+            for (const auto& commitment : joinsplit.commitments)
                 tree.append(commitment);
-            }
 
             intermediates.insert(std::make_pair(tree.root(), tree));
         }
