@@ -18,13 +18,9 @@ cmake ..
 make
 ```
 
-CMake flags:
-Debug version with -g2 level.
+Debug version with -g2 emscripten level. Add cmake flag:
 ```
-mkdir build
-cd build
-cmake -DDEBUG=0N
-make
+-DDEBUG=0N
 ```
 
 Folder test-wasm contain tests for each library of pastel.
