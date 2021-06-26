@@ -2,5 +2,4 @@
 build/
 src/.deps/
 server/static/pasteld
-*.js
 *.wasm
