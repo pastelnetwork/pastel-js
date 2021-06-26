@@ -7,6 +7,8 @@ set(CMAKE_CXX_COMPILER "em++")
 
 set(CMAKE_CXX_STANDARD 17)
 
+option(DEBUG "debug version of wasm with -g2 level" OFF)
+
 include_directories(
     src
     libs/include
@@ -273,6 +275,11 @@ target_compile_definitions(zcash PUBLIC SODIUM_STATIC ${ZCASH_FLAGS} ${SNARK_FLA
 
 set(PASTELD_FLAGS "ENABLE_WALLET")
 set(PASTELD_EMCC_FLAGS "--bind -s ALLOW_MEMORY_GROWTH=1 -s WASM=1 -s EXIT_RUNTIME=0 -s INVOKE_RUN=0 -s MODULARIZE=1 -s DISABLE_EXCEPTION_CATCHING=0 -s EXPORT_NAME=Pastel -O2")
+
+if (DEBUG)
+    set(PASTELD_EMCC_FLAGS "${PASTELD_EMCC_FLAGS} -g2")
+endif()
+
 add_executable(pasteld
     src/pasteld.cpp
     port/port.cpp
