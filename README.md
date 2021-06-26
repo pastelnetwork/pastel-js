@@ -18,7 +18,7 @@ cmake ..
 make
 ```
 
-Debug version with -g2 emscripten level. Add cmake flag:
+Debug version with ```-g2``` emscripten level. Add cmake flag:
 ```
 -DDEBUG=0N
 ```
