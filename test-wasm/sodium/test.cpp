@@ -1,29 +1,29 @@
 #include <emscripten/bind.h>
 #include <iostream>
 
-#include <univalue.h>
+#include <sodium.h>
 
 using namespace emscripten;
 
-void TestUnivalueBool()
+void TestRandomBytes()
 {
-    UniValue value;
+    unsigned int buf_len = 16;
+    unsigned char buf[buf_len];
+    randombytes_buf(buf, buf_len);
 
-    value.setBool(false);
-    std::cout << "is false: " << value.isFalse() << std::endl;
-
-    value.setBool(true);
-    std::cout << "is true: " << value.isTrue() << std::endl;
+    for (int i = 0; i < buf_len; i++)
+        std::cout << buf[i];
+    std::cout << std::endl;
 }
 
 void RunAll()
 {
-    TestUnivalueBool();
+    TestRandomBytes();
 }
 
 EMSCRIPTEN_BINDINGS(Univalue)
 {
-function("univalueBool", &TestUnivalueBool);
-function("runAll", &RunAll)
+function("TestRandomBytes", &TestRandomBytes);
+function("runAll", &RunAll);
 }
 

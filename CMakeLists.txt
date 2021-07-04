@@ -148,7 +148,7 @@ add_library(bitcoin_util
     src/utiltime.cpp 
 )
 target_include_directories(bitcoin_util PRIVATE src/univalue/include)
-target_compile_definitions(bitcoin_util PUBLIC SODIUM_STATIC HAVE_ENDIAN_H)
+target_compile_definitions(bitcoin_util PUBLIC SODIUM_STATIC)
 
 # Pastel crypto
 add_library(bitcoin_crypto

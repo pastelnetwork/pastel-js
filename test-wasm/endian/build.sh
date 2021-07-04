@@ -1,12 +1,11 @@
-em++ test.cpp ../../libs/libsodium.a \
-    -I ./../../libs/include/ \
+em++ test.cpp \
+    -I ./../../src \
     --bind \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s MEMORY_GROWTH_GEOMETRIC_STEP=1 \
     -s WASM=1 -s EXIT_RUNTIME=0 -s INVOKE_RUN=0 \
     -s MODULARIZE=1 \
     -s FETCH=1 \
-    -s EXPORT_NAME=Sodium \
+    -s EXPORT_NAME=Endian \
     -flto -O3 \
-    -o sodium.js \
-    --post-js post.js
+    -o endian.js

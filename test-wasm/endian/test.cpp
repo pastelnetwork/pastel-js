@@ -1,23 +1,18 @@
-// Copyright (c) 2014-2018 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#include <emscripten/bind.h>
+#include <iostream>
 
-#ifndef BITCOIN_COMPAT_ENDIAN_H
-#define BITCOIN_COMPAT_ENDIAN_H
-
-#if defined(HAVE_CONFIG_H)
-#include <config/bitcoin-config.h>
-#endif
-
-#include <compat/byteswap.h>
+using namespace emscripten;
 
 #include <stdint.h>
 
-#if defined(HAVE_ENDIAN_H)
+#include <compat/byteswap.h>
 #include <endian.h>
-#elif defined(HAVE_SYS_ENDIAN_H)
-#include <sys/endian.h>
-#endif
+
+// #if defined(HAVE_ENDIAN_H)
+// #include <endian.h>
+// #elif defined(HAVE_SYS_ENDIAN_H)
+// #include <sys/endian.h>
+// #endif
 
 #ifndef HAVE_CONFIG_H
 // While not technically a supported configuration, defaulting to defining these
@@ -63,6 +58,7 @@
 #endif
 
 #endif // HAVE_CONFIG_H
+
 
 #if defined(WORDS_BIGENDIAN)
 
@@ -238,4 +234,20 @@ inline uint64_t le64toh(uint64_t little_endian_64bits)
 
 #endif // WORDS_BIGENDIAN
 
-#endif // BITCOIN_COMPAT_ENDIAN_H
+
+void TestEndian()
+{
+    le64toh(10);
+}
+
+void RunAll()
+{
+    TestEndian();
+}
+
+EMSCRIPTEN_BINDINGS(Univalue)
+{
+function("TestEndian", &TestEndian);
+function("runAll", &RunAll);
+}
+

@@ -1,3 +1,5 @@
 - Check endian.h file. Emscripten has redefinition error with functions from endian.h file. Emscripten has not <sys/endian.h>.
+    @ file endian.h updated to latest version from original bitcoin repository - fixed redefinition of functions
 - random_bytes from sodium library fails in runtime.
+    @ added --post-js with getRandomValue function. Function return random value. Used sodium implementation of js function.
 - main.cpp file has static_assert with <size_t> and <int64_t> which fails cos wasm has ABI 32.
