@@ -3,3 +3,4 @@
 - random_bytes from sodium library fails in runtime.
     @ added --post-js with getRandomValue function. Function return random value. Used sodium implementation of js function.
 - main.cpp file has static_assert with <size_t> and <int64_t> which fails cos wasm has ABI 32.
+- gtest test_transaction.cpp failing in runtime. Maybe cuz of extern params. 
